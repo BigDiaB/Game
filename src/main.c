@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -10,97 +9,134 @@
 
 #include <SDL2/SDL.h>
 
-float map_num(float num, float min1, float max1, float min2, float max2)
-{
-    return (num - min1) * (max2 - min2) / (max1 - min1) + min2;
-}
 
-double tick()
+enum draw_buffer_mask
 {
-    static struct timeval t1;
-    struct timeval t2;
-    gettimeofday(&t2, NULL);
-    double elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0;
-    gettimeofday(&t1, NULL);
+    dbm_x,dbm_y,dbm_z,dbm_tex
+};
 
-    return elapsedTime;
-}
+enum test_chunk_mask
+{
+    tcm_x,tcm_y,tcm_z,tcm_type
+};
+
+enum asset_mask
+{
+    am_default,am_selected
+};
+
+buffer draw_buffer, loaded_world, entity_buffer;
+SDL_Texture* assets[2];
+const uint TILE_SIZE = 200;
+int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
 
 double accumulator;
 
-const Uint8* current_keys;
-Uint8* last_keys = NULL;
-int keysize;
 
 SDL_Window* window;
 SDL_Renderer* renderer;
-SDL_Event event;
+
 const uint WORLD_SIZE = 1000;
-const bool vsync = false; 
-bool running = true;
+
+const bool vsync = true;
 int win_width = 1280, win_height = 720;
-const int tick_precision = 700;
-double ticks[tick_precision] = {0};
-uint used_ticks = 0;
 
-bool pressed(uint key)
+#include "util.h"
+
+
+void load_world(char* filename)
 {
-    return !last_keys[key] && current_keys[key];
+    resize_buffer(loaded_world,get_buffer_length(loaded_world) + 1);
+    FILE *file;
+    file = fopen(filename,"rb");
+
+    fseek(file, 0, SEEK_END);
+    uint size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    void* bin_data = malloc(size);
+    fread(bin_data,1,size,file);
+
+    push_type(UINT);
+    push_type(UINT);
+    push_type(UINT);
+    push_type(UINT);
+
+    uint num_elements = *((uint*)bin_data);
+
+    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,0,*((uint*)(bin_data + sizeof(uint))));
+    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,1,*((uint*)(bin_data + sizeof(uint) * 2)));
+    set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2,init_buffer(num_elements));
+
+    load_buffer_binary(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2),bin_data + sizeof(uint) * 3,size);
+
+    free(bin_data);
 }
 
-bool released(uint key)
+void safe_world(char* filename)
 {
-    return last_keys[key] && !current_keys[key];
-}
+    FILE* file = fopen(filename,"wb");
+    uint size;
+    void* bin_data = dump_buffer_binary(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2),&size);
+    uint num_elements = get_buffer_length(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2));
+    uint x_off = get_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,0), y_off = get_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,1);
 
-bool down(uint key)
-{
-    return current_keys[key];
-}
-
-
-SDL_Rect* translate_rect(SDL_Rect* r)
-{
-    float stretch = (float)win_width / (float)win_height;
-    r->x = map_num(r->x,0,WORLD_SIZE * stretch,0,win_width);
-    r->w = map_num(r->w,0,WORLD_SIZE * stretch,0,win_width);
-    r->y = map_num(r->y,0,WORLD_SIZE,0,win_height);
-    r->h = map_num(r->h,0,WORLD_SIZE,0,win_height);
-
-    r->x += (win_width - win_height / 9 * 16) / 2;
-
-    return r;
-}
-
-SDL_Texture* cube;
-enum object_mask
-{
-    om_x,om_y,om_z,om_tex
-};
-
-void quicksort(uint first_index, uint last_index, buffer sort_buffer)
-{
-    if (first_index < last_index)
-    {
-        uint pivot = get_buffer_fieldf(sort_buffer,last_index,om_x) + get_buffer_fieldf(sort_buffer,last_index,om_y) + get_buffer_fieldf(sort_buffer,last_index,om_z);
-        uint i = (first_index - 1),j;
-        for (j = first_index; j < last_index; j++)
-        {
-            if (get_buffer_fieldf(sort_buffer,j,om_x) + get_buffer_fieldf(sort_buffer,j,om_y) + get_buffer_fieldf(sort_buffer,j,om_z) <= pivot)
-            {
-                i++;
-                swap_buffer_at(sort_buffer,i,j);
-            }
-        }
-
-        swap_buffer_at(sort_buffer,i + 1,last_index);
-        quicksort(first_index, i,sort_buffer);
-        quicksort(i + 2, last_index,sort_buffer);
-    }
+    fwrite(&num_elements,1,sizeof(uint),file);
+    fwrite(&x_off,1,sizeof(uint),file);
+    fwrite(&y_off,1,sizeof(uint),file);
+    fwrite(bin_data,1,get_buffer_size(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2)),file);
+    free(bin_data);
 }
 
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
+    /*
+    0: X Position   float
+    1: Y Position   float
+    2: Z Position   float
+    3: Tex-index    uint
+    */
+
+    push_type(FLOAT);
+    push_type(FLOAT);
+    push_type(FLOAT);
+    push_type(UINT);
+
+    draw_buffer = init_buffer(0);
+
+    push_type(UINT);
+    push_type(UINT);
+    push_type(VOID);
+
+    loaded_world = init_buffer(0);
+
+    push_type(FLOAT);
+    push_type(FLOAT);
+    push_type(FLOAT);
+    push_type(UINT);
+
+    entity_buffer = init_buffer(1);
+
+    float player_x,player_y,player_z;
+    uint player_tex;
+
+    set_buffer_fieldf(entity_buffer,0,0,-200);
+    set_buffer_fieldf(entity_buffer,0,1,-200);
+    set_buffer_fieldf(entity_buffer,0,2,200);
+    set_buffer_fieldui(entity_buffer,0,3,am_selected);
+
+    load_world("test_chunk.world");
+
+    buffer temp = copy_buffer(get_buffer_fieldv(loaded_world,0,2));
+
+    while(iterate_over(temp))
+    {
+        set_fieldui(tcm_z,get_fieldui(tcm_z) + TILE_SIZE);
+    }
+
+    deinit_buffer(temp);
+    
+
     SDL_Init(SDL_INIT_VIDEO);
     window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE );
     renderer = SDL_CreateRenderer(window, 1, SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0) );
@@ -109,127 +145,122 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_GetWindowSize(window,&win_width,&win_height);
     tick();
 
-    cube = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp"));
+    assets[am_default] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp"));
+    assets[am_selected] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_selected.bmp"));
 
-    push_type(FLOAT);
-    push_type(FLOAT);
-    push_type(FLOAT);
-    push_type(VOID);
 
-    /*
-    0: X Position   float
-    1: Y Position   float
-    2: Z Position   float
-    3: Tex          void*
-    */
-
-    const uint TILE_SIZE = 200;
-
-    float pos_x = 4 * TILE_SIZE, pos_y = 4 * TILE_SIZE;
-    int cam_x = 4 * TILE_SIZE, cam_y = -3 * TILE_SIZE;
-
-    buffer objects = init_buffer(256);
-
-    srand(216);
-    while(iterate_over(objects))
-    {
-        set_fieldf(om_x,(get_iterator() % 16) * TILE_SIZE / 2);
-        set_fieldf(om_y,(get_iterator() / 16) * TILE_SIZE / 2);
-        set_fieldf(om_z,((rand() % 2)) * TILE_SIZE);
-        set_fieldv(om_tex,cube);
-    }
-
-    uint i,len = get_buffer_length(objects);
-
-    set_buffer_fieldf(objects,len - 1,om_z,2 * TILE_SIZE);
-    set_buffer_fieldv(objects,len - 1,om_tex,cube);
+    
 
 
     while(running)
     {
-        if (last_keys == NULL)
-        {
-            current_keys = SDL_GetKeyboardState(&keysize);
-            last_keys = malloc(keysize * sizeof(Uint8));
-        }
-        memcpy(last_keys,current_keys,keysize * sizeof(Uint8));
-        current_keys = SDL_GetKeyboardState(NULL);
-        while(SDL_PollEvent(&event))
-        {
-            switch(event.type)
-            {
-                case SDL_QUIT:
-                running = false;
-                break;
 
-                case SDL_WINDOWEVENT:
-                if (event.window.event == SDL_WINDOWEVENT_RESIZED)
-                {
-                    SDL_GetWindowSize(window,&win_width,&win_height);
-                }
-                default:
-                break;
-            }
-        }
+        player_x = get_buffer_fieldf(entity_buffer,0,0);
+        player_y = get_buffer_fieldf(entity_buffer,0,1);
+        player_z = get_buffer_fieldf(entity_buffer,0,2);
+        player_tex = get_buffer_fieldui(entity_buffer,0,3);
+
+        update_SDL();
+        
         double tick_time = tick();
 
         accumulator += tick_time;
         while(accumulator >= 1.0f)
         {
-            const float speed = 0.5f;
-            if (down(SDL_SCANCODE_W))
-                pos_y -= speed;
-            if (down(SDL_SCANCODE_S))
-                pos_y += speed;
-            if (down(SDL_SCANCODE_A))
-                pos_x -= speed;
-            if (down(SDL_SCANCODE_D))
-                pos_x += speed;
-        
-
             /* Physics and other time-dependent stuff */
+
+            float last_x = player_x, last_y = player_y, last_z = player_z;
+
+            const float speed = 0.5f;
+
+            if (current_keys[SDL_SCANCODE_RIGHT])
+                player_x += speed;
+
+            if (current_keys[SDL_SCANCODE_LEFT])
+                player_x -= speed;
+
+            #define COLL_CHECK
+            #ifdef COLL_CHECK
+            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+            {
+                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
+                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
+                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
+                {
+                    player_x = last_x;
+                }
+            }
+            #endif
+
+             if (current_keys[SDL_SCANCODE_DOWN])
+                player_y += speed;
+
+            if (current_keys[SDL_SCANCODE_UP])
+                player_y -= speed;
+
+            #ifdef COLL_CHECK
+            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+            {
+                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
+                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
+                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
+                {
+                    player_y = last_y;
+                }
+            }
+            #endif
+
+            if (current_keys[SDL_SCANCODE_W])
+                player_z += speed;
+
+            if (current_keys[SDL_SCANCODE_S])
+                player_z -= speed;
+
+            #ifdef COLL_CHECK
+            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+            {
+                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > get_fieldui(0) * TILE_SIZE) &&
+                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > get_fieldui(1) * TILE_SIZE) &&
+                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
+                {
+                    player_z = last_z;
+                }
+            }
+            #endif
+
+            
+
             accumulator -= 1.0f;
         }
 
-        ticks[used_ticks] = tick_time;
-        used_ticks++;
 
-        if (used_ticks == tick_precision)
-        {   
-            double avrg = 0.0f;
-            for (i = 0; i < used_ticks; i++)
-            {
-                avrg += ticks[i];
-            }
-            avrg /= used_ticks;
-            used_ticks = 0;
-            char title[128] = {0};
-            sprintf(title,"FPS: %fms %f",avrg,1000.0f / avrg);
-            SDL_SetWindowTitle(window,title);
-        }
-
-        set_buffer_fieldf(objects,len - 1,om_x,pos_x);
-        set_buffer_fieldf(objects,len - 1,om_y,pos_y);
-
-        buffer draw_buffer = copy_buffer(objects);
-
-        quicksort(0,get_buffer_length(draw_buffer) - 1,draw_buffer);
-
-        for (i = 0; i < get_buffer_length(draw_buffer); i++)
+        uint i;
+        for (i = 0; i < get_buffer_length(loaded_world); i++)
         {
-            SDL_Rect r = {(get_buffer_fieldf(draw_buffer,i,om_x) - get_buffer_fieldf(draw_buffer,i,om_y) + cam_x), ((get_buffer_fieldf(draw_buffer,i,om_y) + get_buffer_fieldf(draw_buffer,i,om_x) - get_buffer_fieldf(draw_buffer,i,om_z) + cam_y) / 2), TILE_SIZE,TILE_SIZE};
-            SDL_RenderCopy(renderer,get_buffer_fieldv(draw_buffer,i,om_tex),NULL,translate_rect(&r));
+            while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
+            {
+                add_to_draw_buffer((get_fieldui(tcm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE / 2,(get_fieldui(tcm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE / 2,get_fieldui(tcm_z) * TILE_SIZE,get_fieldui(tcm_type));
+            }
         }
-        
-        SDL_SetRenderDrawColor(renderer,125,125,125,255);
-        SDL_RenderPresent(renderer);
-        SDL_RenderClear(renderer);
 
-        deinit_buffer(draw_buffer);
+        add_to_draw_buffer(get_buffer_fieldf(entity_buffer,0,0) / 2,get_buffer_fieldf(entity_buffer,0,1) / 2,get_buffer_fieldf(entity_buffer,0,2),get_buffer_fieldui(entity_buffer,0,3));
 
-        
+        render_draw_buffer();
+
+        set_buffer_fieldf(entity_buffer,0,0,player_x);
+        set_buffer_fieldf(entity_buffer,0,1,player_y);
+        set_buffer_fieldf(entity_buffer,0,2,player_z);
+        set_buffer_fieldui(entity_buffer,0,3,player_tex);
     }
-    deinit_buffer(objects);
+
+    safe_world("test_chunk.world");
+
+    uint i;
+    for (i = 0; i < get_buffer_length(loaded_world); i++)
+        deinit_buffer(get_buffer_fieldv(loaded_world,i,2));
+    deinit_buffer(loaded_world);
+    deinit_buffer(draw_buffer);
+    deinit_buffer(entity_buffer);
     free(last_keys);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
