@@ -121,7 +121,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     uint player_tex;
 
     set_buffer_fieldf(entity_buffer,0,0,-200);
-    set_buffer_fieldf(entity_buffer,0,1,-200);
+    set_buffer_fieldf(entity_buffer,0,1,800);
     set_buffer_fieldf(entity_buffer,0,2,200);
     set_buffer_fieldui(entity_buffer,0,3,am_selected);
 
@@ -173,59 +173,74 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
             const float speed = 0.5f;
 
-            if (current_keys[SDL_SCANCODE_RIGHT])
-                player_x += speed;
-
-            if (current_keys[SDL_SCANCODE_LEFT])
-                player_x -= speed;
-
             #define COLL_CHECK
             #ifdef COLL_CHECK
-            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+
+            
+
+            
+
+
+
+            uint i;
+            for (i = 0; i < 3; i++)
             {
-                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
-                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
-                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
+                switch(i)
                 {
-                    player_x = last_x;
+                    case 0:
+                    {
+                        if (current_keys[SDL_SCANCODE_RIGHT])
+                            player_x += speed;
+                        if (current_keys[SDL_SCANCODE_LEFT])
+                            player_x -= speed;
+                    }
+                    break;
+                    case 1:
+                    {
+                        if (current_keys[SDL_SCANCODE_DOWN])
+                            player_y += speed;
+
+                        if (current_keys[SDL_SCANCODE_UP])
+                            player_y -= speed;
+                    }
+                    break;
+                    case 2:
+                    {
+                        if (current_keys[SDL_SCANCODE_W])
+                            player_z += speed;
+
+                        if (current_keys[SDL_SCANCODE_S])
+                            player_z -= speed;
+                    }
+                    break;
+                    default:
+                    break;
+                }
+
+                while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+                {
+                    if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
+                       (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
+                       (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
+                    {
+                        switch(i)
+                        {
+                            case 0:
+                            player_x = last_x;
+                            break;
+                            case 1:
+                            player_y = last_y;
+                            break;
+                            case 2:
+                            player_z = last_z;
+                            break;
+                            default:
+                            break;
+                        }
+                    }
                 }
             }
-            #endif
 
-             if (current_keys[SDL_SCANCODE_DOWN])
-                player_y += speed;
-
-            if (current_keys[SDL_SCANCODE_UP])
-                player_y -= speed;
-
-            #ifdef COLL_CHECK
-            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
-            {
-                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
-                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
-                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
-                {
-                    player_y = last_y;
-                }
-            }
-            #endif
-
-            if (current_keys[SDL_SCANCODE_W])
-                player_z += speed;
-
-            if (current_keys[SDL_SCANCODE_S])
-                player_z -= speed;
-
-            #ifdef COLL_CHECK
-            while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
-            {
-                if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > get_fieldui(0) * TILE_SIZE) &&
-                   (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > get_fieldui(1) * TILE_SIZE) &&
-                   (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
-                {
-                    player_z = last_z;
-                }
-            }
             #endif
 
             
@@ -243,7 +258,8 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
             }
         }
 
-        add_to_draw_buffer(get_buffer_fieldf(entity_buffer,0,0) / 2,get_buffer_fieldf(entity_buffer,0,1) / 2,get_buffer_fieldf(entity_buffer,0,2),get_buffer_fieldui(entity_buffer,0,3));
+        add_to_draw_buffer((uint)get_buffer_fieldf(entity_buffer,0,0) / 2,(uint)get_buffer_fieldf(entity_buffer,0,1) / 2,(uint)get_buffer_fieldf(entity_buffer,0,2),get_buffer_fieldui(entity_buffer,0,3));
+        add_to_draw_buffer((uint)get_buffer_fieldf(entity_buffer,0,0) / 2,(uint)get_buffer_fieldf(entity_buffer,0,1) / 2,(uint)get_buffer_fieldf(entity_buffer,0,2) + TILE_SIZE,get_buffer_fieldui(entity_buffer,0,3));
 
         render_draw_buffer();
 
