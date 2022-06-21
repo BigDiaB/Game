@@ -9,6 +9,9 @@
 
 #include <SDL2/SDL.h>
 
+const int tick_precision = 100;
+double ticks[tick_precision] = {0};
+uint used_ticks = 0;
 
 enum draw_buffer_mask
 {
@@ -22,11 +25,11 @@ enum test_chunk_mask
 
 enum asset_mask
 {
-    am_default,am_selected
+    am_default,am_selected,am_interactable,num_assets
 };
 
 buffer draw_buffer, loaded_world, entity_buffer;
-SDL_Texture* assets[2];
+SDL_Texture* assets[num_assets];
 const uint TILE_SIZE = 200;
 int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
 
@@ -38,8 +41,10 @@ SDL_Renderer* renderer;
 
 const uint WORLD_SIZE = 1000;
 
-const bool vsync = true;
-int win_width = 1280, win_height = 720;
+const bool vsync = false;
+int win_width, win_height;
+
+float player_x,player_y,player_z;
 
 #include "util.h"
 
@@ -104,11 +109,24 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     draw_buffer = init_buffer(0);
 
+    /*
+    0: X Offset     uint
+    1: Y Offset     uint
+    2: Cube Buffer  void
+    */
+
     push_type(UINT);
     push_type(UINT);
     push_type(VOID);
 
     loaded_world = init_buffer(0);
+
+     /*
+    0: X Position   float
+    1: Y Position   float
+    2: Z Position   float
+    3: Tex-index    uint
+    */
 
     push_type(FLOAT);
     push_type(FLOAT);
@@ -117,28 +135,25 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     entity_buffer = init_buffer(1);
 
-    float player_x,player_y,player_z;
     uint player_tex;
 
-    set_buffer_fieldf(entity_buffer,0,0,-200);
-    set_buffer_fieldf(entity_buffer,0,1,800);
-    set_buffer_fieldf(entity_buffer,0,2,200);
-    set_buffer_fieldui(entity_buffer,0,3,am_selected);
+    set_buffer_fieldf(entity_buffer,0,0,5 * TILE_SIZE);
+    set_buffer_fieldf(entity_buffer,0,1,5 * TILE_SIZE);
+    set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
+    set_buffer_fieldui(entity_buffer,0,3,am_interactable);
 
     load_world("test_chunk.world");
 
-    buffer temp = copy_buffer(get_buffer_fieldv(loaded_world,0,2));
-
-    while(iterate_over(temp))
-    {
-        set_fieldui(tcm_z,get_fieldui(tcm_z) + TILE_SIZE);
-    }
-
-    deinit_buffer(temp);
-    
-
     SDL_Init(SDL_INIT_VIDEO);
-    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE );
+
+    SDL_Rect win_size;
+
+    SDL_GetDisplayBounds(0,&win_size);
+    const float window_scale = 0.8f;
+    win_width = win_size.w * window_scale;
+    win_height = win_size.h * window_scale;
+
+    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE);
     renderer = SDL_CreateRenderer(window, 1, SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0) );
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -147,10 +162,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     assets[am_default] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp"));
     assets[am_selected] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_selected.bmp"));
-
-
-    
-
+    assets[am_interactable] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_interactable.bmp"));
 
     while(running)
     {
@@ -164,23 +176,31 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         
         double tick_time = tick();
 
+        ticks[used_ticks] = tick_time;
+        used_ticks++;
+
+        if (used_ticks == tick_precision)
+        {   
+            uint i;
+            double avrg = 0.0f;
+            for (i = 0; i < used_ticks; i++)
+                avrg += ticks[i];
+            avrg /= used_ticks;
+            used_ticks = 0;
+            char title[128] = {0};
+            sprintf(title,"FPS: %fms %f",avrg,1000.0f / avrg);
+            SDL_SetWindowTitle(window,title);
+        }
+
         accumulator += tick_time;
-        while(accumulator >= 1.0f)
+        while(accumulator >= 10.0f)
         {
+            accumulator -= 10.0f;
             /* Physics and other time-dependent stuff */
 
             float last_x = player_x, last_y = player_y, last_z = player_z;
 
-            const float speed = 0.5f;
-
-            #define COLL_CHECK
-            #ifdef COLL_CHECK
-
-            
-
-            
-
-
+            const float speed = 5.0f;
 
             uint i;
             for (i = 0; i < 3; i++)
@@ -219,9 +239,9 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
                 while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
                 {
-                    if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE  > get_fieldui(0) * TILE_SIZE) &&
-                       (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE  > get_fieldui(1) * TILE_SIZE) &&
-                       (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE  > get_fieldui(2) * TILE_SIZE))
+                    if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > get_fieldui(0) * TILE_SIZE) &&
+                       (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > get_fieldui(1) * TILE_SIZE) &&
+                       (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
                     {
                         switch(i)
                         {
@@ -239,13 +259,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
                         }
                     }
                 }
-            }
-
-            #endif
-
-            
-
-            accumulator -= 1.0f;
+            }            
         }
 
 
@@ -254,12 +268,12 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         {
             while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
             {
-                add_to_draw_buffer((get_fieldui(tcm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE / 2,(get_fieldui(tcm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE / 2,get_fieldui(tcm_z) * TILE_SIZE,get_fieldui(tcm_type));
+                add_to_draw_buffer((get_fieldui(tcm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(tcm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(tcm_z) * TILE_SIZE,get_fieldui(tcm_type));
             }
         }
 
-        add_to_draw_buffer((uint)get_buffer_fieldf(entity_buffer,0,0) / 2,(uint)get_buffer_fieldf(entity_buffer,0,1) / 2,(uint)get_buffer_fieldf(entity_buffer,0,2),get_buffer_fieldui(entity_buffer,0,3));
-        add_to_draw_buffer((uint)get_buffer_fieldf(entity_buffer,0,0) / 2,(uint)get_buffer_fieldf(entity_buffer,0,1) / 2,(uint)get_buffer_fieldf(entity_buffer,0,2) + TILE_SIZE,get_buffer_fieldui(entity_buffer,0,3));
+        while(iterate_over(entity_buffer))
+            add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),get_fieldui(3));
 
         render_draw_buffer();
 
@@ -267,10 +281,13 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         set_buffer_fieldf(entity_buffer,0,1,player_y);
         set_buffer_fieldf(entity_buffer,0,2,player_z);
         set_buffer_fieldui(entity_buffer,0,3,player_tex);
+
+        SDL_SetRenderDrawColor(renderer,125,125,125,255);
+        SDL_RenderPresent(renderer);
+        SDL_RenderClear(renderer);
     }
 
-    safe_world("test_chunk.world");
-
+    /*safe_world("test_chunk.world");*/
     uint i;
     for (i = 0; i < get_buffer_length(loaded_world); i++)
         deinit_buffer(get_buffer_fieldv(loaded_world,i,2));

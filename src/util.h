@@ -7,33 +7,56 @@ Uint8* last_keys = NULL;
 int keysize;
 bool running = true;
 
-void quicksort(uint first_index, uint last_index, buffer sort_buffer)
+void bubble_sort(buffer sort_buffer)
 {
-    if (first_index < last_index)
+    int step,size = get_buffer_length(sort_buffer);
+    for (step = 0; step < size - 1; ++step)
     {
-        float pivot_x = get_buffer_fieldf(sort_buffer,last_index,dbm_x);
-        float pivot_y = get_buffer_fieldf(sort_buffer,last_index,dbm_y);
-        float pivot_z = get_buffer_fieldf(sort_buffer,last_index,dbm_z);
-
-        int i = (first_index - 1);
-        uint j;
- 
-        for (j = first_index; j < last_index; j++)
+        int i,swapped = 0;
+        for (i = 0; i < size - step - 1; ++i)
         {
-            float point_x = get_buffer_fieldf(sort_buffer,j,dbm_x);
-            float point_y = get_buffer_fieldf(sort_buffer,j,dbm_y);
-            float point_z = get_buffer_fieldf(sort_buffer,j,dbm_z);
+            int tilesize = TILE_SIZE;
+            float step_x = get_buffer_fieldf(sort_buffer,i,dbm_x);
+            float step_y = get_buffer_fieldf(sort_buffer,i,dbm_y);
+            float step_z = get_buffer_fieldf(sort_buffer,i,dbm_z);
 
-            if (pivot_x + pivot_y > point_x + point_y || (pivot_x < point_x + TILE_SIZE / 2 && point_x < pivot_x + TILE_SIZE / 2 && pivot_y < point_y + TILE_SIZE / 2 && point_y < pivot_y + TILE_SIZE / 2 && pivot_z > point_z))
+            float curr_x = get_buffer_fieldf(sort_buffer,i + 1,dbm_x);
+            float curr_y = get_buffer_fieldf(sort_buffer,i + 1,dbm_y);
+            float curr_z = get_buffer_fieldf(sort_buffer,i + 1,dbm_z);
+
+            #define AABB(x1,x2,y1,y2,size) (x1 < x2 + size && x2 < x1 + size && y1 < y2 + size && y2 < y1 + size)
+
+            if ((AABB(step_x,curr_x,step_y,curr_y,tilesize)))
             {
-                i++;
-                swap_buffer_at(sort_buffer,i,j);
+                if (step_z > curr_z)
+                {
+                    swap_buffer_at(sort_buffer,i,i + 1);
+                    swapped = 1;
+                }
             }
-        }
+            else if ((int)step_z % tilesize == 0 && (int)curr_z % tilesize == 0)
+            {
+                if (step_x + step_y + 2 * step_z > curr_x + curr_y + 2 * curr_z)
+                {
+                    swap_buffer_at(sort_buffer,i,i + 1);
+                    swapped = 1;
+                }
+            }
+            else
+            {
+                if (step_x + step_y + 0 * step_z > curr_x + curr_y + 0 * curr_z)
+                {
+                    swap_buffer_at(sort_buffer,i,i + 1);
+                    swapped = 1;
+                }
+            }
 
-        swap_buffer_at(sort_buffer,i + 1,last_index);
-        quicksort(first_index, i < 0 ? 0 : i,sort_buffer);
-        quicksort(i + 2, last_index,sort_buffer);
+            #undef AABB
+        }
+        if (swapped == 0)
+        {
+            break;
+        }
     }
 }
 
@@ -89,11 +112,7 @@ SDL_Rect* translate_rect(SDL_Rect* r)
         r->h = map_num(r->h,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
 
         r->y += (win_height - win_width / 16 * 9) / 2;
-        
-
     }
-
-    
 
     return r;
 }
@@ -137,34 +156,24 @@ void add_to_draw_buffer(float x, float y, float z, uint tex)
     set_buffer_fieldui(draw_buffer,len,dbm_tex,tex);
 }
 
-void render_stuff(uint tex_idx,SDL_Rect* r)
-{
-    SDL_RenderCopy(renderer,assets[tex_idx],NULL,r);
-}
 
 void render_draw_buffer()
 {
 	uint i;
 	if (get_buffer_length(draw_buffer) > 1)
-        quicksort(0,get_buffer_length(draw_buffer) - 1,draw_buffer);
+    {
+        bubble_sort(draw_buffer);
+    }
 
     for (i = 0; i < get_buffer_length(draw_buffer); i++)
     {
         SDL_Rect r;
-        /*
-        (get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_y) + cam_x) * (TILE_SIZE / 2),
-        (get_buffer_fieldf(draw_buffer,i,dbm_x) + get_buffer_fieldf(draw_buffer,i,dbm_y) + can_y) * (TILE_SIZE / 2)*/
-
-        r.x = get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_y) + cam_x;
-        r.y = (get_buffer_fieldf(draw_buffer,i,dbm_y) + get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_z) + cam_y) / 2;
+        r.x = (get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_y)) / 2 + cam_x;
+        r.y = ((get_buffer_fieldf(draw_buffer,i,dbm_y) + get_buffer_fieldf(draw_buffer,i,dbm_x)) / 2 - get_buffer_fieldf(draw_buffer,i,dbm_z) + cam_y) / 2;
         r.w = TILE_SIZE;
         r.h = TILE_SIZE;
         SDL_RenderCopy(renderer,assets[get_buffer_fieldui(draw_buffer,i,dbm_tex)],NULL,translate_rect(&r));
     }
-
-    SDL_SetRenderDrawColor(renderer,125,125,125,255);
-    SDL_RenderPresent(renderer);
-    SDL_RenderClear(renderer);
     resize_buffer(draw_buffer,0);
 }
 
