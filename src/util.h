@@ -7,7 +7,136 @@ Uint8* last_keys = NULL;
 int keysize;
 bool running = true;
 
-void bubble_sort(buffer sort_buffer)
+double accumulator;
+int win_width, win_height;
+SDL_Window* window;
+SDL_Renderer* renderer;
+
+const int tick_precision = 100;
+double ticks[tick_precision] = {0};
+uint used_ticks = 0;
+
+void update_actions()
+{
+    memcpy(last_actions,current_actions,sizeof(bool) * num_actions);
+    memset(current_actions,0,sizeof(bool) * num_actions);
+
+    if (current_keys[SDL_SCANCODE_RIGHT])
+        current_actions[act_move_right] = true;
+
+    if (current_keys[SDL_SCANCODE_LEFT])
+        current_actions[act_move_left] = true;
+
+    if (current_keys[SDL_SCANCODE_DOWN])
+        current_actions[act_move_down] = true;
+
+    if (current_keys[SDL_SCANCODE_UP])
+        current_actions[act_move_up] = true;
+
+    if (current_keys[SDL_SCANCODE_W])
+        current_actions[act_float_up] = true;
+
+    if (current_keys[SDL_SCANCODE_S])
+        current_actions[act_float_down] = true;
+}
+
+void load_chunk(char* filename)
+{
+    resize_buffer(loaded_world,get_buffer_length(loaded_world) + 1);
+    FILE *file;
+    file = fopen(filename,"rb");
+
+    fseek(file, 0, SEEK_END);
+    uint size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    void* bin_data = malloc(size);
+    fread(bin_data,1,size,file);
+
+    push_type(UINT);
+    push_type(UINT);
+    push_type(UINT);
+    push_type(UINT);
+
+    uint num_elements = *((uint*)bin_data);
+
+    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,0,*((uint*)(bin_data + sizeof(uint))));
+    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,1,*((uint*)(bin_data + sizeof(uint) * 2)));
+    set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2,init_buffer(num_elements));
+    set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,3,malloc(strlen(filename) + 1));
+    strcpy(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,3),filename);
+
+    load_buffer_binary(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2),bin_data + sizeof(uint) * 3,size);
+
+    free(bin_data);
+}
+
+void safe_world()
+{
+    uint i,size,x_off,y_off,num_elements;
+    void* curr_buffer,*bin_data;
+    char* filename;
+    FILE* file;
+
+    for (i = 0; i < get_buffer_length(loaded_world); i++)
+    {
+        curr_buffer = get_buffer_fieldv(loaded_world,i,2);
+        bin_data = dump_buffer_binary(curr_buffer,&size);
+        filename = get_buffer_fieldv(loaded_world,i,3);
+        num_elements = get_buffer_length(curr_buffer);
+
+        x_off = get_buffer_fieldui(loaded_world,i,0);
+        y_off = get_buffer_fieldui(loaded_world,i,1);
+
+        file = fopen(filename,"wb");
+
+        fwrite(&num_elements,1,sizeof(uint),file);
+        fwrite(&x_off,1,sizeof(uint),file);
+        fwrite(&y_off,1,sizeof(uint),file);
+        fwrite(bin_data,1,get_buffer_size(curr_buffer),file);
+
+        fclose(file);
+
+        free(bin_data);
+        free(filename);
+    }
+}
+
+void display_frame_time(double tick_time)
+{
+    ticks[used_ticks] = tick_time;
+    used_ticks++;
+
+    if (used_ticks == tick_precision)
+    {   
+        uint i;
+        double avrg = 0.0f;
+        for (i = 0; i < used_ticks; i++)
+            avrg += ticks[i];
+        avrg /= used_ticks;
+        used_ticks = 0;
+        char title[128] = {0};
+        sprintf(title,"FPS: %fms %f",avrg,1000.0f / avrg);
+        SDL_SetWindowTitle(window,title);
+    }
+}
+
+void remove_invisible(buffer vis_buffer)
+{
+    while(iterate_over(vis_buffer))
+    {
+        int cart_x = (get_fieldf(dbm_x) - get_fieldf(dbm_y)) / 2 + cam_x;
+        int cart_y = ((get_fieldf(dbm_y) + get_fieldf(dbm_x)) / 2 - get_fieldf(dbm_z) + cam_y) / 2;
+        int tilesize = TILE_SIZE;
+        int worldsize = WORLD_SIZE;
+        #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
+        if (!(AABB(0,cart_x,0,cart_y,worldsize * ((float)win_width / (float)win_height),tilesize,worldsize,tilesize)))
+        #undef AABB
+            remove_at(get_iterator());
+    }
+}
+
+void depth_sort(buffer sort_buffer)
 {
     int step,size = get_buffer_length(sort_buffer);
     for (step = 0; step < size - 1; ++step)
@@ -25,8 +154,8 @@ void bubble_sort(buffer sort_buffer)
             float curr_z = get_buffer_fieldf(sort_buffer,i + 1,dbm_z);
 
             #define AABB(x1,x2,y1,y2,size) (x1 < x2 + size && x2 < x1 + size && y1 < y2 + size && y2 < y1 + size)
-
             if ((AABB(step_x,curr_x,step_y,curr_y,tilesize)))
+            #undef AABB
             {
                 if (step_z > curr_z)
                 {
@@ -44,14 +173,12 @@ void bubble_sort(buffer sort_buffer)
             }
             else
             {
-                if (step_x + step_y + 0 * step_z > curr_x + curr_y + 0 * curr_z)
+                if (step_x + step_y > curr_x + curr_y)
                 {
                     swap_buffer_at(sort_buffer,i,i + 1);
                     swapped = 1;
                 }
             }
-
-            #undef AABB
         }
         if (swapped == 0)
         {
@@ -162,7 +289,8 @@ void render_draw_buffer()
 	uint i;
 	if (get_buffer_length(draw_buffer) > 1)
     {
-        bubble_sort(draw_buffer);
+        remove_invisible(draw_buffer);
+        depth_sort(draw_buffer);
     }
 
     for (i = 0; i < get_buffer_length(draw_buffer); i++)
@@ -174,6 +302,7 @@ void render_draw_buffer()
         r.h = TILE_SIZE;
         SDL_RenderCopy(renderer,assets[get_buffer_fieldui(draw_buffer,i,dbm_tex)],NULL,translate_rect(&r));
     }
+
     resize_buffer(draw_buffer,0);
 }
 

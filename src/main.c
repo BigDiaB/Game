@@ -9,9 +9,12 @@
 
 #include <SDL2/SDL.h>
 
-const int tick_precision = 100;
-double ticks[tick_precision] = {0};
-uint used_ticks = 0;
+const uint TILE_SIZE = 200;
+const uint WORLD_SIZE = 1000;
+const bool vsync = false;
+
+buffer draw_buffer, loaded_world, entity_buffer;
+int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
 
 enum draw_buffer_mask
 {
@@ -28,70 +31,16 @@ enum asset_mask
     am_default,am_selected,am_interactable,num_assets
 };
 
-buffer draw_buffer, loaded_world, entity_buffer;
+enum action_mask
+{
+    act_move_up,act_move_down,act_move_left,act_move_right,act_float_up,act_float_down,num_actions
+};
+
 SDL_Texture* assets[num_assets];
-const uint TILE_SIZE = 200;
-int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
-
-double accumulator;
-
-
-SDL_Window* window;
-SDL_Renderer* renderer;
-
-const uint WORLD_SIZE = 1000;
-
-const bool vsync = false;
-int win_width, win_height;
-
-float player_x,player_y,player_z;
+bool current_actions[num_actions];
+bool last_actions[num_actions];
 
 #include "util.h"
-
-
-void load_world(char* filename)
-{
-    resize_buffer(loaded_world,get_buffer_length(loaded_world) + 1);
-    FILE *file;
-    file = fopen(filename,"rb");
-
-    fseek(file, 0, SEEK_END);
-    uint size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    void* bin_data = malloc(size);
-    fread(bin_data,1,size,file);
-
-    push_type(UINT);
-    push_type(UINT);
-    push_type(UINT);
-    push_type(UINT);
-
-    uint num_elements = *((uint*)bin_data);
-
-    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,0,*((uint*)(bin_data + sizeof(uint))));
-    set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,1,*((uint*)(bin_data + sizeof(uint) * 2)));
-    set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2,init_buffer(num_elements));
-
-    load_buffer_binary(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2),bin_data + sizeof(uint) * 3,size);
-
-    free(bin_data);
-}
-
-void safe_world(char* filename)
-{
-    FILE* file = fopen(filename,"wb");
-    uint size;
-    void* bin_data = dump_buffer_binary(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2),&size);
-    uint num_elements = get_buffer_length(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2));
-    uint x_off = get_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,0), y_off = get_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,1);
-
-    fwrite(&num_elements,1,sizeof(uint),file);
-    fwrite(&x_off,1,sizeof(uint),file);
-    fwrite(&y_off,1,sizeof(uint),file);
-    fwrite(bin_data,1,get_buffer_size(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,2)),file);
-    free(bin_data);
-}
 
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
@@ -112,11 +61,13 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     /*
     0: X Offset     uint
     1: Y Offset     uint
-    2: Cube Buffer  void
+    2: Cube Buffer  void*
+    3: Filename     void*
     */
 
     push_type(UINT);
     push_type(UINT);
+    push_type(VOID);
     push_type(VOID);
 
     loaded_world = init_buffer(0);
@@ -135,14 +86,15 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     entity_buffer = init_buffer(1);
 
+    float player_x,player_y,player_z;
     uint player_tex;
 
     set_buffer_fieldf(entity_buffer,0,0,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,1,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
-    set_buffer_fieldui(entity_buffer,0,3,am_interactable);
+    set_buffer_fieldui(entity_buffer,0,3,am_selected);
 
-    load_world("test_chunk.world");
+    load_chunk("test_chunk.chunk");
 
     SDL_Init(SDL_INIT_VIDEO);
 
@@ -153,12 +105,20 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     win_width = win_size.w * window_scale;
     win_height = win_size.h * window_scale;
 
-    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE);
+    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     renderer = SDL_CreateRenderer(window, 1, SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0) );
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_GetWindowSize(window,&win_width,&win_height);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     tick();
+
+    {
+        int render_width = 0, render_height = 0;
+        SDL_GetRendererOutputSize(renderer, &render_width, &render_height);
+        if(render_width != win_width)
+            SDL_RenderSetScale(renderer, (float)render_width / (float) win_width, (float)render_height / (float) win_height);
+    }
 
     assets[am_default] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp"));
     assets[am_selected] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_selected.bmp"));
@@ -176,21 +136,9 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         
         double tick_time = tick();
 
-        ticks[used_ticks] = tick_time;
-        used_ticks++;
+        display_frame_time(tick_time);
 
-        if (used_ticks == tick_precision)
-        {   
-            uint i;
-            double avrg = 0.0f;
-            for (i = 0; i < used_ticks; i++)
-                avrg += ticks[i];
-            avrg /= used_ticks;
-            used_ticks = 0;
-            char title[128] = {0};
-            sprintf(title,"FPS: %fms %f",avrg,1000.0f / avrg);
-            SDL_SetWindowTitle(window,title);
-        }
+        update_actions();
 
         accumulator += tick_time;
         while(accumulator >= 10.0f)
@@ -209,27 +157,27 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
                 {
                     case 0:
                     {
-                        if (current_keys[SDL_SCANCODE_RIGHT])
+                        if (current_actions[act_move_right])
                             player_x += speed;
-                        if (current_keys[SDL_SCANCODE_LEFT])
+                        if (current_actions[act_move_left])
                             player_x -= speed;
                     }
                     break;
                     case 1:
                     {
-                        if (current_keys[SDL_SCANCODE_DOWN])
+                        if (current_actions[act_move_down])
                             player_y += speed;
 
-                        if (current_keys[SDL_SCANCODE_UP])
+                        if (current_actions[act_move_up])
                             player_y -= speed;
                     }
                     break;
                     case 2:
                     {
-                        if (current_keys[SDL_SCANCODE_W])
+                        if (current_actions[act_float_up])
                             player_z += speed;
 
-                        if (current_keys[SDL_SCANCODE_S])
+                        if (current_actions[act_float_down])
                             player_z -= speed;
                     }
                     break;
@@ -237,30 +185,39 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
                     break;
                 }
 
-                while(iterate_over(get_buffer_fieldv(loaded_world,0,2)))
+                uint j;
+                for (j = 0; j < get_buffer_length(loaded_world); j++)
                 {
-                    if ((player_x < get_fieldui(0) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > get_fieldui(0) * TILE_SIZE) &&
-                       (player_y < get_fieldui(1) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > get_fieldui(1) * TILE_SIZE) &&
-                       (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
+                    while(iterate_over(get_buffer_fieldv(loaded_world,j,2)))
                     {
-                        switch(i)
+                        if ((player_x < (get_fieldui(0) + get_buffer_fieldui(loaded_world,0,0)) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > (get_fieldui(0) + get_buffer_fieldui(loaded_world,0,0)) * TILE_SIZE) &&
+                           (player_y < (get_fieldui(1) + get_buffer_fieldui(loaded_world,0,1)) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > (get_fieldui(1) + get_buffer_fieldui(loaded_world,0,1)) * TILE_SIZE) &&
+                           (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
                         {
-                            case 0:
-                            player_x = last_x;
-                            break;
-                            case 1:
-                            player_y = last_y;
-                            break;
-                            case 2:
-                            player_z = last_z;
-                            break;
-                            default:
-                            break;
+                            switch(i)
+                            {
+                                case 0:
+                                player_x = last_x;
+                                break;
+                                case 1:
+                                player_y = last_y;
+                                break;
+                                case 2:
+                                player_z = last_z;
+                                break;
+                                default:
+                                break;
+                            }
                         }
                     }
                 }
             }            
         }
+
+        set_buffer_fieldf(entity_buffer,0,0,player_x);
+        set_buffer_fieldf(entity_buffer,0,1,player_y);
+        set_buffer_fieldf(entity_buffer,0,2,player_z);
+        set_buffer_fieldui(entity_buffer,0,3,player_tex);
 
 
         uint i;
@@ -277,17 +234,13 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
         render_draw_buffer();
 
-        set_buffer_fieldf(entity_buffer,0,0,player_x);
-        set_buffer_fieldf(entity_buffer,0,1,player_y);
-        set_buffer_fieldf(entity_buffer,0,2,player_z);
-        set_buffer_fieldui(entity_buffer,0,3,player_tex);
-
         SDL_SetRenderDrawColor(renderer,125,125,125,255);
         SDL_RenderPresent(renderer);
         SDL_RenderClear(renderer);
     }
 
-    /*safe_world("test_chunk.world");*/
+    safe_world();
+
     uint i;
     for (i = 0; i < get_buffer_length(loaded_world); i++)
         deinit_buffer(get_buffer_fieldv(loaded_world,i,2));
