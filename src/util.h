@@ -5,6 +5,22 @@ SDL_Event event;
 const Uint8* current_keys;
 Uint8* last_keys = NULL;
 int keysize;
+
+bool pressed(uint key)
+{
+    return !last_keys[key] && current_keys[key];
+}
+
+bool released(uint key)
+{
+    return last_keys[key] && !current_keys[key];
+}
+
+bool down(uint key)
+{
+    return current_keys[key];
+}
+
 bool running = true;
 
 double accumulator;
@@ -21,22 +37,22 @@ void update_actions()
     memcpy(last_actions,current_actions,sizeof(bool) * num_actions);
     memset(current_actions,0,sizeof(bool) * num_actions);
 
-    if (current_keys[SDL_SCANCODE_RIGHT])
+    if (down(SDL_SCANCODE_RIGHT))
         current_actions[act_move_right] = true;
 
-    if (current_keys[SDL_SCANCODE_LEFT])
+    if (down(SDL_SCANCODE_LEFT))
         current_actions[act_move_left] = true;
 
-    if (current_keys[SDL_SCANCODE_DOWN])
+    if (down(SDL_SCANCODE_DOWN))
         current_actions[act_move_down] = true;
 
-    if (current_keys[SDL_SCANCODE_UP])
+    if (down(SDL_SCANCODE_UP))
         current_actions[act_move_up] = true;
 
-    if (current_keys[SDL_SCANCODE_W])
+    if (down(SDL_SCANCODE_W))
         current_actions[act_float_up] = true;
 
-    if (current_keys[SDL_SCANCODE_S])
+    if (down(SDL_SCANCODE_S))
         current_actions[act_float_down] = true;
 }
 
@@ -155,9 +171,25 @@ void depth_sort(buffer sort_buffer)
 
             #define AABB(x1,x2,y1,y2,size) (x1 < x2 + size && x2 < x1 + size && y1 < y2 + size && y2 < y1 + size)
             if ((AABB(step_x,curr_x,step_y,curr_y,tilesize)))
-            #undef AABB
             {
                 if (step_z > curr_z)
+                {
+                    swap_buffer_at(sort_buffer,i,i + 1);
+                    swapped = 1;
+                }
+            }
+            else if ((AABB(step_x,curr_x,step_z,curr_z,tilesize)))
+            {
+                if (step_y > curr_y)
+                {
+                    swap_buffer_at(sort_buffer,i,i + 1);
+                    swapped = 1;
+                }
+            }
+            else if ((AABB(step_y,curr_y,step_z,curr_z,tilesize)))
+            #undef AABB
+            {
+                if (step_x > curr_x )
                 {
                     swap_buffer_at(sort_buffer,i,i + 1);
                     swapped = 1;
@@ -171,13 +203,15 @@ void depth_sort(buffer sort_buffer)
                     swapped = 1;
                 }
             }
-            else
+            else if (step_x + step_y > curr_x + curr_y)
             {
-                if (step_x + step_y > curr_x + curr_y)
-                {
-                    swap_buffer_at(sort_buffer,i,i + 1);
-                    swapped = 1;
-                }
+                swap_buffer_at(sort_buffer,i,i + 1);
+                swapped = 1;
+            }
+            else if (step_x + step_y + step_z * 2 > curr_x + curr_y + curr_z * 2)
+            {
+                swap_buffer_at(sort_buffer,i,i + 1);
+                swapped = 1;
             }
         }
         if (swapped == 0)
@@ -200,21 +234,6 @@ double tick()
     double elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0;
     gettimeofday(&t1, NULL);
     return elapsedTime;
-}
-
-bool pressed(uint key)
-{
-    return !last_keys[key] && current_keys[key];
-}
-
-bool released(uint key)
-{
-    return last_keys[key] && !current_keys[key];
-}
-
-bool down(uint key)
-{
-    return current_keys[key];
 }
 
 SDL_Rect* translate_rect(SDL_Rect* r)

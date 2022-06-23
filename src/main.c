@@ -21,14 +21,24 @@ enum draw_buffer_mask
     dbm_x,dbm_y,dbm_z,dbm_tex
 };
 
-enum test_chunk_mask
+enum chunk_buffer_mask
 {
-    tcm_x,tcm_y,tcm_z,tcm_type
+    cbm_x,cbm_y,cbm_z,cbm_type
+};
+
+enum entity_buffer_mask
+{
+    ebm_x,ebm_y,ebm_z,ebm_type
+};
+
+enum entity_type
+{
+    et_player, et_debug
 };
 
 enum asset_mask
 {
-    am_default,am_selected,am_interactable,num_assets
+    am_default,am_selected,am_interactable,am_debug,num_assets
 };
 
 enum action_mask
@@ -76,7 +86,8 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     0: X Position   float
     1: Y Position   float
     2: Z Position   float
-    3: Tex-index    uint
+    3: Type         uint
+    4: Tex-index    uint
     */
 
     push_type(FLOAT);
@@ -92,16 +103,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     set_buffer_fieldf(entity_buffer,0,0,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,1,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
-    set_buffer_fieldui(entity_buffer,0,3,am_selected);
+    set_buffer_fieldui(entity_buffer,0,3,et_player);
 
     load_chunk("test_chunk.chunk");
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_Rect win_size;
-
-    SDL_GetDisplayBounds(0,&win_size);
     const float window_scale = 0.8f;
+    SDL_Rect win_size;
+    int render_width = 0, render_height = 0;
+    SDL_GetDisplayBounds(0,&win_size);
     win_width = win_size.w * window_scale;
     win_height = win_size.h * window_scale;
 
@@ -111,18 +122,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_GetWindowSize(window,&win_width,&win_height);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-    tick();
+    SDL_GetRendererOutputSize(renderer, &render_width, &render_height);
+    if(render_width != win_width)
+        SDL_RenderSetScale(renderer, (float)render_width / (float) win_width, (float)render_height / (float) win_height);
 
-    {
-        int render_width = 0, render_height = 0;
-        SDL_GetRendererOutputSize(renderer, &render_width, &render_height);
-        if(render_width != win_width)
-            SDL_RenderSetScale(renderer, (float)render_width / (float) win_width, (float)render_height / (float) win_height);
-    }
+    tick();
 
     assets[am_default] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp"));
     assets[am_selected] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_selected.bmp"));
     assets[am_interactable] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_interactable.bmp"));
+    assets[am_debug] = SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_debug.bmp"));
 
     while(running)
     {
@@ -225,12 +234,26 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         {
             while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
             {
-                add_to_draw_buffer((get_fieldui(tcm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(tcm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(tcm_z) * TILE_SIZE,get_fieldui(tcm_type));
+                add_to_draw_buffer((get_fieldui(cbm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(cbm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(cbm_z) * TILE_SIZE,get_fieldui(cbm_type));
             }
         }
 
         while(iterate_over(entity_buffer))
-            add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),get_fieldui(3));
+        {
+            switch(get_fieldui(ebm_type))
+            {
+                case et_player:
+                {
+                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_selected);
+                }
+                break;
+                default:
+                {
+                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_debug);
+                }
+                break;
+            }
+        }
 
         render_draw_buffer();
 
