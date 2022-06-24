@@ -11,19 +11,19 @@
 
 const uint TILE_SIZE = 200;
 const uint WORLD_SIZE = 1000;
-const bool vsync = false;
+const bool vsync = true;
 
-buffer draw_buffer, loaded_world, entity_buffer;
+buffer draw_buffer, loaded_world, collider_buffer, entity_buffer;
 int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
+
+enum collider_buffer_mask
+{
+    cbm_x,cbm_y,cbm_z
+};
 
 enum draw_buffer_mask
 {
     dbm_x,dbm_y,dbm_z,dbm_tex
-};
-
-enum chunk_buffer_mask
-{
-    cbm_x,cbm_y,cbm_z,cbm_type
 };
 
 enum entity_buffer_mask
@@ -54,6 +54,19 @@ bool last_actions[num_actions];
 
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
+
+    /*
+    X Position  int
+    Y Position  int
+    Z Position  int
+    */
+
+    push_type(INT);
+    push_type(INT);
+    push_type(INT);
+
+    collider_buffer = init_buffer(0);
+
     /*
     0: X Position   float
     1: Y Position   float
@@ -149,6 +162,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
         update_actions();
 
+        uint i;
+        int tilesize = TILE_SIZE;
+        for (i = 0; i < get_buffer_length(loaded_world); i++)
+        {
+            while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
+            {
+                add_to_collider_buffer((get_fieldui(0) + get_buffer_fieldui(loaded_world,i,0)) * tilesize,(get_fieldui(1) + get_buffer_fieldui(loaded_world,i,1)) * tilesize,get_fieldui(2) * tilesize);
+            }
+        }
+
         accumulator += tick_time;
         while(accumulator >= 10.0f)
         {
@@ -159,68 +182,38 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
             const float speed = 5.0f;
 
-            uint i;
-            for (i = 0; i < 3; i++)
+            if (current_actions[act_move_right])
+                player_x += speed;
+            if (current_actions[act_move_left])
+                player_x -= speed;
+
+            if (check_collider_buffer(player_x,player_y,player_z))
             {
-                switch(i)
-                {
-                    case 0:
-                    {
-                        if (current_actions[act_move_right])
-                            player_x += speed;
-                        if (current_actions[act_move_left])
-                            player_x -= speed;
-                    }
-                    break;
-                    case 1:
-                    {
-                        if (current_actions[act_move_down])
-                            player_y += speed;
+                player_x = last_x;
+            }
 
-                        if (current_actions[act_move_up])
-                            player_y -= speed;
-                    }
-                    break;
-                    case 2:
-                    {
-                        if (current_actions[act_float_up])
-                            player_z += speed;
 
-                        if (current_actions[act_float_down])
-                            player_z -= speed;
-                    }
-                    break;
-                    default:
-                    break;
-                }
+            if (current_actions[act_move_down])
+                player_y += speed;
+            if (current_actions[act_move_up])
+                player_y -= speed;
 
-                uint j;
-                for (j = 0; j < get_buffer_length(loaded_world); j++)
-                {
-                    while(iterate_over(get_buffer_fieldv(loaded_world,j,2)))
-                    {
-                        if ((player_x < (get_fieldui(0) + get_buffer_fieldui(loaded_world,0,0)) * TILE_SIZE + TILE_SIZE && player_x + TILE_SIZE > (get_fieldui(0) + get_buffer_fieldui(loaded_world,0,0)) * TILE_SIZE) &&
-                           (player_y < (get_fieldui(1) + get_buffer_fieldui(loaded_world,0,1)) * TILE_SIZE + TILE_SIZE && player_y + TILE_SIZE > (get_fieldui(1) + get_buffer_fieldui(loaded_world,0,1)) * TILE_SIZE) &&
-                           (player_z < get_fieldui(2) * TILE_SIZE + TILE_SIZE && player_z + TILE_SIZE > get_fieldui(2) * TILE_SIZE))
-                        {
-                            switch(i)
-                            {
-                                case 0:
-                                player_x = last_x;
-                                break;
-                                case 1:
-                                player_y = last_y;
-                                break;
-                                case 2:
-                                player_z = last_z;
-                                break;
-                                default:
-                                break;
-                            }
-                        }
-                    }
-                }
-            }            
+            if (check_collider_buffer(player_x,player_y,player_z))
+            {
+                player_y = last_y;
+            }
+
+
+            if (current_actions[act_float_up])
+                player_z += speed;
+            if (current_actions[act_float_down])
+                player_z -= speed;
+
+            if (check_collider_buffer(player_x,player_y,player_z))
+            {
+                player_z = last_z;
+            }
+
         }
 
         set_buffer_fieldf(entity_buffer,0,0,player_x);
@@ -228,13 +221,11 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         set_buffer_fieldf(entity_buffer,0,2,player_z);
         set_buffer_fieldui(entity_buffer,0,3,player_tex);
 
-
-        uint i;
         for (i = 0; i < get_buffer_length(loaded_world); i++)
         {
             while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
             {
-                add_to_draw_buffer((get_fieldui(cbm_x) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(cbm_y) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(cbm_z) * TILE_SIZE,get_fieldui(cbm_type));
+                add_to_draw_buffer((get_fieldui(0) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(1) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE,get_fieldui(3));
             }
         }
 
@@ -260,6 +251,8 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         SDL_SetRenderDrawColor(renderer,125,125,125,255);
         SDL_RenderPresent(renderer);
         SDL_RenderClear(renderer);
+
+        resize_buffer(collider_buffer,0);
     }
 
     safe_world();
@@ -269,6 +262,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         deinit_buffer(get_buffer_fieldv(loaded_world,i,2));
     deinit_buffer(loaded_world);
     deinit_buffer(draw_buffer);
+    deinit_buffer(collider_buffer);
     deinit_buffer(entity_buffer);
     free(last_keys);
     SDL_DestroyRenderer(renderer);

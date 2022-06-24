@@ -28,7 +28,7 @@ int win_width, win_height;
 SDL_Window* window;
 SDL_Renderer* renderer;
 
-const int tick_precision = 100;
+const int tick_precision = vsync ? 10 : 100;
 double ticks[tick_precision] = {0};
 uint used_ticks = 0;
 
@@ -300,6 +300,30 @@ void add_to_draw_buffer(float x, float y, float z, uint tex)
     set_buffer_fieldf(draw_buffer,len,dbm_y,y);
     set_buffer_fieldf(draw_buffer,len,dbm_z,z);
     set_buffer_fieldui(draw_buffer,len,dbm_tex,tex);
+}
+
+void add_to_collider_buffer(int x, int y, int z)
+{
+    resize_buffer(collider_buffer,get_buffer_length(collider_buffer) + 1);
+
+    uint len = get_buffer_length(collider_buffer) - 1;
+    set_buffer_fieldi(collider_buffer,len,cbm_x,x);
+    set_buffer_fieldi(collider_buffer,len,cbm_y,y);
+    set_buffer_fieldi(collider_buffer,len,cbm_z,z);
+}
+
+bool check_collider_buffer(float x, float y, float z)
+{
+    int tilesize = TILE_SIZE;
+    while(iterate_over(collider_buffer))
+        if((x < get_fieldi(0) + tilesize && x + tilesize > get_fieldi(0)) &&
+           (y < get_fieldi(1) + tilesize && y + tilesize > get_fieldi(1)) &&
+           (z < get_fieldi(2) + tilesize && z + tilesize > get_fieldi(2)))
+        {
+            set_iterator(0);
+            return true;
+        }
+    return false;
 }
 
 
