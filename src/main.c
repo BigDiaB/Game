@@ -11,10 +11,10 @@
 
 const uint TILE_SIZE = 200;
 const uint WORLD_SIZE = 1000;
-const bool vsync = true;
+const bool vsync = false;
 
 buffer draw_buffer, loaded_world, collider_buffer, entity_buffer;
-int cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
+float cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
 
 enum collider_buffer_mask
 {
@@ -56,9 +56,9 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
 
     /*
-    X Position  int
-    Y Position  int
-    Z Position  int
+    0: X Position  int
+    1: Y Position  int
+    2: Z Position  int
     */
 
     push_type(INT);
@@ -95,7 +95,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     loaded_world = init_buffer(0);
 
-     /*
+    /*
     0: X Position   float
     1: Y Position   float
     2: Z Position   float
@@ -163,12 +163,31 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         update_actions();
 
         uint i;
-        int tilesize = TILE_SIZE;
+
         for (i = 0; i < get_buffer_length(loaded_world); i++)
         {
             while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
             {
-                add_to_collider_buffer((get_fieldui(0) + get_buffer_fieldui(loaded_world,i,0)) * tilesize,(get_fieldui(1) + get_buffer_fieldui(loaded_world,i,1)) * tilesize,get_fieldui(2) * tilesize);
+                add_to_draw_buffer((float)((int)get_fieldui(0) + (int)get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(float)((int)get_fieldui(1) + (int)get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE,get_fieldui(3));
+
+                add_to_collider_buffer((float)((int)get_fieldui(0) + (int)get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(float)((int)get_fieldui(1) + (int)get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE);
+            }
+        }
+
+        while(iterate_over(entity_buffer))
+        {
+            switch(get_fieldui(ebm_type))
+            {
+                case et_player:
+                {
+                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_selected);
+                }
+                break;
+                default:
+                {
+                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_debug);
+                }
+                break;
             }
         }
 
@@ -178,9 +197,17 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
             accumulator -= 10.0f;
             /* Physics and other time-dependent stuff */
 
+            const double smooth = 0.008f;
+
+            float player_cart_x = player_x - player_y;
+            float player_cart_y = (player_x + player_y) / 2 - player_z;
+
+            cam_x -= (cam_x - (WORLD_SIZE * 16.0f / 9.0f / 2 - player_cart_x / 2 - TILE_SIZE / 2)) * smooth;
+            cam_y -= (cam_y - (WORLD_SIZE / 2 - player_cart_y / 2 - TILE_SIZE / 2)) * smooth;
+
             float last_x = player_x, last_y = player_y, last_z = player_z;
 
-            const float speed = 5.0f;
+            uint speed = 5;
 
             if (current_actions[act_move_right])
                 player_x += speed;
@@ -221,34 +248,9 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         set_buffer_fieldf(entity_buffer,0,2,player_z);
         set_buffer_fieldui(entity_buffer,0,3,player_tex);
 
-        for (i = 0; i < get_buffer_length(loaded_world); i++)
-        {
-            while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
-            {
-                add_to_draw_buffer((get_fieldui(0) + get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(get_fieldui(1) + get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE,get_fieldui(3));
-            }
-        }
-
-        while(iterate_over(entity_buffer))
-        {
-            switch(get_fieldui(ebm_type))
-            {
-                case et_player:
-                {
-                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_selected);
-                }
-                break;
-                default:
-                {
-                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_debug);
-                }
-                break;
-            }
-        }
-
         render_draw_buffer();
 
-        SDL_SetRenderDrawColor(renderer,125,125,125,255);
+        SDL_SetRenderDrawColor(renderer,0,175,200,255);
         SDL_RenderPresent(renderer);
         SDL_RenderClear(renderer);
 

@@ -1,6 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#define USE_FRECT
+
 SDL_Event event;
 const Uint8* current_keys;
 Uint8* last_keys = NULL;
@@ -142,11 +144,12 @@ void remove_invisible(buffer vis_buffer)
     while(iterate_over(vis_buffer))
     {
         int cart_x = (get_fieldf(dbm_x) - get_fieldf(dbm_y)) / 2 + cam_x;
-        int cart_y = ((get_fieldf(dbm_y) + get_fieldf(dbm_x)) / 2 - get_fieldf(dbm_z) + cam_y) / 2;
+        int cart_y = ((get_fieldf(dbm_y) + get_fieldf(dbm_x)) / 2 - get_fieldf(dbm_z)) / 2 + cam_y;
         int tilesize = TILE_SIZE;
         int worldsize = WORLD_SIZE;
+        float stretch = ((float)win_width / (float)win_height);
         #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
-        if (!(AABB(0,cart_x,0,cart_y,worldsize * ((float)win_width / (float)win_height),tilesize,worldsize,tilesize)))
+        if (!(AABB(0,cart_x,0,cart_y,(float)worldsize * stretch,tilesize,worldsize,tilesize)))
         #undef AABB
             remove_at(get_iterator());
     }
@@ -235,8 +238,11 @@ double tick()
     gettimeofday(&t1, NULL);
     return elapsedTime;
 }
-
+#ifdef USE_FRECT
+SDL_FRect* translate_rect(SDL_FRect* r)
+#else
 SDL_Rect* translate_rect(SDL_Rect* r)
+#endif
 {
 
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
@@ -338,12 +344,20 @@ void render_draw_buffer()
 
     for (i = 0; i < get_buffer_length(draw_buffer); i++)
     {
+        #ifdef USE_FRECT
+        SDL_FRect r;
+        #else
         SDL_Rect r;
-        r.x = (get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_y)) / 2 + cam_x;
-        r.y = ((get_buffer_fieldf(draw_buffer,i,dbm_y) + get_buffer_fieldf(draw_buffer,i,dbm_x)) / 2 - get_buffer_fieldf(draw_buffer,i,dbm_z) + cam_y) / 2;
+        #endif
+        r.x = ceil((get_buffer_fieldf(draw_buffer,i,dbm_x) - get_buffer_fieldf(draw_buffer,i,dbm_y)) / 2 + cam_x);
+        r.y = ceil(((get_buffer_fieldf(draw_buffer,i,dbm_y) + get_buffer_fieldf(draw_buffer,i,dbm_x)) / 2 - get_buffer_fieldf(draw_buffer,i,dbm_z)) / 2 + cam_y);
         r.w = TILE_SIZE;
         r.h = TILE_SIZE;
+        #ifdef USE_FRECT
+        SDL_RenderCopyF(renderer,assets[get_buffer_fieldui(draw_buffer,i,dbm_tex)],NULL,translate_rect(&r));
+        #else
         SDL_RenderCopy(renderer,assets[get_buffer_fieldui(draw_buffer,i,dbm_tex)],NULL,translate_rect(&r));
+        #endif
     }
 
     resize_buffer(draw_buffer,0);
