@@ -119,6 +119,42 @@ void safe_world()
     }
 }
 
+float map_num(float num, float min1, float max1, float min2, float max2)
+{
+    return (num - min1) * (max2 - min2) / (max1 - min1) + min2;
+}
+
+#ifdef USE_FRECT
+SDL_FRect* translate_rect(SDL_FRect* r)
+#else
+SDL_Rect* translate_rect(SDL_Rect* r)
+#endif
+{
+
+    if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
+    {
+        float stretch = (float)win_width / (float)win_height;
+        r->x = map_num(r->x,0,WORLD_SIZE * stretch,0,win_width);
+        r->w = map_num(r->w,0,WORLD_SIZE * stretch,0,win_width);
+        r->y = map_num(r->y,0,WORLD_SIZE,0,win_height);
+        r->h = map_num(r->h,0,WORLD_SIZE,0,win_height);
+
+        r->x += (win_width - win_height / 9 * 16) / 2;
+    }
+    else
+    {
+        float stretch = (float)win_height / (float)win_width;
+        r->x = map_num(r->x,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
+        r->w = map_num(r->w,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
+        r->y = map_num(r->y,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
+        r->h = map_num(r->h,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
+
+        r->y += (win_height - win_width / 16 * 9) / 2;
+    }
+
+    return r;
+}
+
 void display_frame_time(double tick_time)
 {
     ticks[used_ticks] = tick_time;
@@ -150,14 +186,30 @@ void remove_invisible(buffer vis_buffer, unsigned int xoff, unsigned int yoff)
         int cart_y = ((iso_y + iso_x) / 2 - iso_z) / 2 + cam_y;
         int tilesize = TILE_SIZE;
         int worldsize = WORLD_SIZE;
-        float stretch = ((float)win_width / (float)win_height);
-        #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
-        if (!(AABB(0,cart_x,0,cart_y,(float)worldsize * stretch,tilesize,worldsize,tilesize)))
-        #undef AABB
+
+
+        if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
         {
-            remove_at(get_iterator());
-            set_iterator(get_iterator());
-            
+            float stretch = (float)win_width / (float)win_height;
+            #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
+            if (!(AABB(0,cart_x,0,cart_y,(float)worldsize * stretch,tilesize,worldsize,tilesize)))
+            #undef AABB
+            {
+                remove_at(get_iterator());
+                set_iterator(get_iterator());
+                
+            }
+        }
+        else
+        {
+            float stretch = (float)win_height / (float)win_width;
+            #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
+            if (!(AABB(0,cart_x,0,cart_y,worldsize,tilesize,(float)worldsize * stretch,tilesize)))
+            #undef AABB
+            {
+                remove_at(get_iterator());
+                set_iterator(get_iterator());
+            }
         }
     }
 }
@@ -171,13 +223,13 @@ void depth_sort(buffer sort_buffer)
         for (i = 0; i < size - step - 1; ++i)
         {
             int tilesize = TILE_SIZE;
-            unsigned int step_x = get_buffer_fieldi(sort_buffer,i,cm_x);
-            unsigned int step_y = get_buffer_fieldi(sort_buffer,i,cm_y);
-            unsigned int step_z = get_buffer_fieldi(sort_buffer,i,cm_z);
+            int step_x = get_buffer_fieldi(sort_buffer,i,cm_x);
+            int step_y = get_buffer_fieldi(sort_buffer,i,cm_y);
+            int step_z = get_buffer_fieldi(sort_buffer,i,cm_z);
 
-            unsigned int curr_x = get_buffer_fieldi(sort_buffer,i + 1,cm_x);
-            unsigned int curr_y = get_buffer_fieldi(sort_buffer,i + 1,cm_y);
-            unsigned int curr_z = get_buffer_fieldi(sort_buffer,i + 1,cm_z);
+            int curr_x = get_buffer_fieldi(sort_buffer,i + 1,cm_x);
+            int curr_y = get_buffer_fieldi(sort_buffer,i + 1,cm_y);
+            int curr_z = get_buffer_fieldi(sort_buffer,i + 1,cm_z);
 
             
             #define AABB(x1,x2,y1,y2,size) (x1 < x2 + size && x2 < x1 + size && y1 < y2 + size && y2 < y1 + size)
@@ -232,11 +284,6 @@ void depth_sort(buffer sort_buffer)
     }
 }
 
-float map_num(float num, float min1, float max1, float min2, float max2)
-{
-    return (num - min1) * (max2 - min2) / (max1 - min1) + min2;
-}
-
 double tick()
 {
     static struct timeval t1;
@@ -245,36 +292,6 @@ double tick()
     double elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0;
     gettimeofday(&t1, NULL);
     return elapsedTime;
-}
-#ifdef USE_FRECT
-SDL_FRect* translate_rect(SDL_FRect* r)
-#else
-SDL_Rect* translate_rect(SDL_Rect* r)
-#endif
-{
-
-    if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
-    {
-        float stretch = (float)win_width / (float)win_height;
-        r->x = map_num(r->x,0,WORLD_SIZE * stretch,0,win_width);
-        r->w = map_num(r->w,0,WORLD_SIZE * stretch,0,win_width);
-        r->y = map_num(r->y,0,WORLD_SIZE,0,win_height);
-        r->h = map_num(r->h,0,WORLD_SIZE,0,win_height);
-
-        r->x += (win_width - win_height / 9 * 16) / 2;
-    }
-    else
-    {
-        float stretch = (float)win_height / (float)win_width;
-        r->x = map_num(r->x,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
-        r->w = map_num(r->w,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
-        r->y = map_num(r->y,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
-        r->h = map_num(r->h,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
-
-        r->y += (win_height - win_width / 16 * 9) / 2;
-    }
-
-    return r;
 }
 
 void update_SDL()
@@ -343,12 +360,9 @@ void render_draw_buffer()
 
     for (i = 0; i < num_chunks; i++)
     {
-        set_buffer_fieldv(loaded_world,indices[i],ldm_entities,copy_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes)));
-
-
         unsigned xoff = get_buffer_fieldui(loaded_world,indices[i],ldm_xoff);
         unsigned yoff = get_buffer_fieldui(loaded_world,indices[i],ldm_yoff);
-
+        set_buffer_fieldv(loaded_world,indices[i],ldm_entities,copy_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes)));
         buffer cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
 
         while(iterate_over(entity_buffer))
@@ -377,18 +391,41 @@ void render_draw_buffer()
                             {
                                 if (indices[j] > indices[i])
                                 {
+                                    unsigned int k;
+                                    int x_off = (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff) - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_xoff);
+                                    int y_off = (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff) - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_yoff);
+                                    buffer i_cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
+                                    for (k = 0; k < get_buffer_length(get_buffer_fieldv(loaded_world,indices[i],ldm_entities)); k++)
+                                    {
+                                        set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) - x_off * TILE_SIZE * 10);
+                                        set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) - y_off * TILE_SIZE * 10);
+                                    }
                                     append_buffer_at(
-                                        get_buffer_fieldv(loaded_world,indices[j],ldm_entities),
-                                        get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+                                        get_buffer_fieldv(loaded_world,indices[i],ldm_entities),
+                                        get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
 
                                     deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
                                     set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
                                 }
                                 else
                                 {
-                                    append_buffer_at(get_buffer_fieldv(loaded_world,indices[i],ldm_entities),get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
+                                    unsigned int k;
+                                    int x_off = (int)get_buffer_fieldui(loaded_world,indices[i],ldm_xoff) - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
+                                    int y_off = (int)get_buffer_fieldui(loaded_world,indices[i],ldm_yoff) - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
+                                    buffer j_cubes = get_buffer_fieldv(loaded_world,indices[j],ldm_entities);
+                                    for (k = 0; k < get_buffer_length(j_cubes); k++)
+                                    {
+                                        set_buffer_fieldi(j_cubes,k,cm_x,get_buffer_fieldi(j_cubes,k,cm_x) - x_off * TILE_SIZE * 10);
+                                        set_buffer_fieldi(j_cubes,k,cm_y,get_buffer_fieldi(j_cubes,k,cm_y) - y_off * TILE_SIZE * 10);
+                                    }
+                                    append_buffer_at(
+                                        get_buffer_fieldv(loaded_world,indices[j],ldm_entities),
+                                        get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+
                                     deinit_buffer(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
                                     set_buffer_fieldv(loaded_world,indices[j],ldm_entities,NULL);
+
+                                    reverse_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
                                 }
                             }
                         }

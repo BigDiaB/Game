@@ -137,9 +137,10 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
     set_buffer_fieldui(entity_buffer,0,3,am_selected);
 
-    load_chunk("test_chunk3.chunk");
-    load_chunk("test_chunk2.chunk");
     load_chunk("test_chunk.chunk");
+    load_chunk("test_chunk2.chunk");
+    load_chunk("test_chunk3.chunk");
+    load_chunk("test_chunk4.chunk");
 
     SDL_Init(SDL_INIT_VIDEO);
 
