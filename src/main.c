@@ -9,12 +9,28 @@
 
 #include <SDL2/SDL.h>
 
-const uint TILE_SIZE = 200;
-const uint WORLD_SIZE = 1000;
+const unsigned int TILE_SIZE = 200;
+const unsigned int WORLD_SIZE = 1000;
+const unsigned int CHUNK_SIZE = 10;
 const bool vsync = false;
 
 buffer draw_buffer, loaded_world, collider_buffer, entity_buffer;
 float cam_x = 4 * TILE_SIZE, cam_y = 0 * TILE_SIZE;
+
+enum loaded_world_mask
+{
+    ldm_xoff,ldm_yoff,ldm_drawflag,ldm_cubes,ldm_entities,ldm_filename
+};
+
+enum cube_mask
+{
+    cm_x,cm_y,cm_z,cm_tex
+};
+
+enum draw_buffer_ent
+{
+    dbe_entity, dbe_world
+};
 
 enum collider_buffer_mask
 {
@@ -84,12 +100,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     /*
     0: X Offset     uint
     1: Y Offset     uint
-    2: Cube Buffer  void*
-    3: Filename     void*
+    2: Draw Flag    uint
+    3: Cube Buffer  void*
+    4: Entities     void*
+    5: Filename     void*
     */
 
     push_type(UINT);
     push_type(UINT);
+    push_type(UINT);
+    push_type(VOID);
     push_type(VOID);
     push_type(VOID);
 
@@ -99,8 +119,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     0: X Position   float
     1: Y Position   float
     2: Z Position   float
-    3: Type         uint
-    4: Tex-index    uint
+    3: Tex-index    uint
     */
 
     push_type(FLOAT);
@@ -111,13 +130,15 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     entity_buffer = init_buffer(1);
 
     float player_x,player_y,player_z;
-    uint player_tex;
+    unsigned int player_tex;
 
     set_buffer_fieldf(entity_buffer,0,0,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,1,5 * TILE_SIZE);
     set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
-    set_buffer_fieldui(entity_buffer,0,3,et_player);
+    set_buffer_fieldui(entity_buffer,0,3,am_selected);
 
+    load_chunk("test_chunk3.chunk");
+    load_chunk("test_chunk2.chunk");
     load_chunk("test_chunk.chunk");
 
     SDL_Init(SDL_INIT_VIDEO);
@@ -148,7 +169,6 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     while(running)
     {
-
         player_x = get_buffer_fieldf(entity_buffer,0,0);
         player_y = get_buffer_fieldf(entity_buffer,0,1);
         player_z = get_buffer_fieldf(entity_buffer,0,2);
@@ -162,32 +182,15 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
         update_actions();
 
-        uint i;
-
+        
+        unsigned int i;
         for (i = 0; i < get_buffer_length(loaded_world); i++)
         {
-            while(iterate_over(get_buffer_fieldv(loaded_world,i,2)))
+            while(iterate_over(get_buffer_fieldv(loaded_world,i,ldm_cubes)))
             {
-                add_to_draw_buffer((float)((int)get_fieldui(0) + (int)get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(float)((int)get_fieldui(1) + (int)get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE,get_fieldui(3));
-
-                add_to_collider_buffer((float)((int)get_fieldui(0) + (int)get_buffer_fieldui(loaded_world,i,0)) * TILE_SIZE,(float)((int)get_fieldui(1) + (int)get_buffer_fieldui(loaded_world,i,1)) * TILE_SIZE,get_fieldui(2) * TILE_SIZE);
-            }
-        }
-
-        while(iterate_over(entity_buffer))
-        {
-            switch(get_fieldui(ebm_type))
-            {
-                case et_player:
-                {
-                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_selected);
-                }
-                break;
-                default:
-                {
-                    add_to_draw_buffer(get_fieldf(0),get_fieldf(1),get_fieldf(2),am_debug);
-                }
-                break;
+                add_to_collider_buffer(get_fieldi(cm_x) + get_buffer_fieldui(loaded_world,i,ldm_xoff) * CHUNK_SIZE * TILE_SIZE,
+                                       get_fieldi(cm_y) + get_buffer_fieldui(loaded_world,i,ldm_yoff) * CHUNK_SIZE * TILE_SIZE,
+                                       get_fieldi(cm_z));
             }
         }
 
@@ -195,7 +198,6 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         while(accumulator >= 10.0f)
         {
             accumulator -= 10.0f;
-            /* Physics and other time-dependent stuff */
 
             const double smooth = 0.008f;
 
@@ -206,8 +208,8 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
             cam_y -= (cam_y - (WORLD_SIZE / 2 - player_cart_y / 2 - TILE_SIZE / 2)) * smooth;
 
             float last_x = player_x, last_y = player_y, last_z = player_z;
-
-            uint speed = 5;
+            
+            unsigned int speed = 5;
 
             if (current_actions[act_move_right])
                 player_x += speed;
@@ -254,14 +256,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
         SDL_RenderPresent(renderer);
         SDL_RenderClear(renderer);
 
-        resize_buffer(collider_buffer,0);
+        if (get_buffer_length(collider_buffer) != 0)
+            resize_buffer(collider_buffer,0);
     }
+
+    unsigned int i;
 
     safe_world();
 
-    uint i;
     for (i = 0; i < get_buffer_length(loaded_world); i++)
-        deinit_buffer(get_buffer_fieldv(loaded_world,i,2));
+        deinit_buffer(get_buffer_fieldv(loaded_world,i,ldm_cubes));
     deinit_buffer(loaded_world);
     deinit_buffer(draw_buffer);
     deinit_buffer(collider_buffer);
