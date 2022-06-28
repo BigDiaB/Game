@@ -368,14 +368,13 @@ void render_draw_buffer()
         while(iterate_over(entity_buffer))
         {
             #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
-            if (AABB(get_fieldf(ebm_x),(xoff) * 10 * TILE_SIZE,
-                     get_fieldf(ebm_y),(yoff) * 10 * TILE_SIZE,
+            if (AABB(get_fieldf(ebm_x),xoff * 10 * TILE_SIZE,
+                     get_fieldf(ebm_y),yoff * 10 * TILE_SIZE,
                      TILE_SIZE,10 * TILE_SIZE,
                      TILE_SIZE,10 * TILE_SIZE))
             {
                 appendages[get_iterator()]++;
-
-                if (appendages[get_iterator()] >= 2)
+                if (appendages[get_iterator()] > 1)
                 {
                     unsigned int j;
                     for (j = 0; j < get_buffer_length(loaded_world); j++)
@@ -389,44 +388,26 @@ void render_draw_buffer()
                         {
                             if (get_buffer_fieldv(loaded_world,indices[j],ldm_entities) != NULL && get_buffer_fieldv(loaded_world,indices[i],ldm_entities) != NULL)
                             {
-                                if (indices[j] > indices[i])
+                                unsigned int k;
+                                int x_off = xoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
+                                int y_off = yoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
+                                buffer i_cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
+                                buffer j_cubes = get_buffer_fieldv(loaded_world,indices[j],ldm_entities);
+                                for (k = 0; k < get_buffer_length(i_cubes); k++)
                                 {
-                                    unsigned int k;
-                                    int x_off = (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff) - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_xoff);
-                                    int y_off = (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff) - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_yoff);
-                                    buffer i_cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
-                                    for (k = 0; k < get_buffer_length(get_buffer_fieldv(loaded_world,indices[i],ldm_entities)); k++)
-                                    {
-                                        set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) - x_off * TILE_SIZE * 10);
-                                        set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) - y_off * TILE_SIZE * 10);
-                                    }
-                                    append_buffer_at(
-                                        get_buffer_fieldv(loaded_world,indices[i],ldm_entities),
-                                        get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
-
-                                    deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
-                                    set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
+                                    set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) + x_off * TILE_SIZE * 10);
+                                    set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) + y_off * TILE_SIZE * 10);
                                 }
-                                else
+
+                                for (k = 0; k < get_buffer_length(j_cubes); k++)
                                 {
-                                    unsigned int k;
-                                    int x_off = (int)get_buffer_fieldui(loaded_world,indices[i],ldm_xoff) - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
-                                    int y_off = (int)get_buffer_fieldui(loaded_world,indices[i],ldm_yoff) - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
-                                    buffer j_cubes = get_buffer_fieldv(loaded_world,indices[j],ldm_entities);
-                                    for (k = 0; k < get_buffer_length(j_cubes); k++)
-                                    {
-                                        set_buffer_fieldi(j_cubes,k,cm_x,get_buffer_fieldi(j_cubes,k,cm_x) - x_off * TILE_SIZE * 10);
-                                        set_buffer_fieldi(j_cubes,k,cm_y,get_buffer_fieldi(j_cubes,k,cm_y) - y_off * TILE_SIZE * 10);
-                                    }
-                                    append_buffer_at(
-                                        get_buffer_fieldv(loaded_world,indices[j],ldm_entities),
-                                        get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
-
-                                    deinit_buffer(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
-                                    set_buffer_fieldv(loaded_world,indices[j],ldm_entities,NULL);
-
-                                    reverse_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+                                    set_buffer_fieldui(j_cubes,k,cm_tex,0);
                                 }
+
+                                append_buffer_at(i_cubes,j_cubes);
+
+                                deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+                                set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
                             }
                         }
                     }
@@ -447,6 +428,10 @@ void render_draw_buffer()
         }
     }
 
+    /*
+        Indices irgendwie sortieren, wenn gemerged wurde
+    */
+
     for (i = 0; i < num_chunks; i++)
     {
         if (get_buffer_fieldui(loaded_world,indices[i],ldm_drawflag) || true)
@@ -459,7 +444,7 @@ void render_draw_buffer()
             if (cubes == NULL)
                 continue;
 
-            remove_invisible(cubes,xoff,yoff);
+            /*remove_invisible(cubes,xoff,yoff);*/
             depth_sort(cubes);
 
             while(iterate_over(cubes))
