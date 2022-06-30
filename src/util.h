@@ -335,28 +335,11 @@ void render_draw_buffer()
         indices[i] = i;
     }
 
-    int step,size = get_buffer_length(loaded_world);
-    for (step = 0; step < size - 1; ++step)
-    {
-        int i,swapped = 0;
-        for (i = 0; i < size - step - 1; ++i)
-        {
-            if (offsets[indices[i]][0] + offsets[indices[i]][1] > offsets[indices[i+1]][0] + offsets[indices[i+1]][0])
-            {
-                swapped = 1;
-                unsigned int temp = indices[i];
-                indices[i] = indices[i+1];
-                indices[i+1] = temp;
-            }
-        }
-        if (swapped == 0)
-        {
-            break;
-        }
-    }
-
     unsigned int appendages[get_buffer_length(entity_buffer)];
     memset(appendages,0,get_buffer_length(entity_buffer) * sizeof(unsigned int));
+
+    int merges[num_chunks];
+    memset(merges,-1,num_chunks * sizeof(int));
 
     for (i = 0; i < num_chunks; i++)
     {
@@ -389,25 +372,40 @@ void render_draw_buffer()
                             if (get_buffer_fieldv(loaded_world,indices[j],ldm_entities) != NULL && get_buffer_fieldv(loaded_world,indices[i],ldm_entities) != NULL)
                             {
                                 unsigned int k;
-                                int x_off = xoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
-                                int y_off = yoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
                                 buffer i_cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
                                 buffer j_cubes = get_buffer_fieldv(loaded_world,indices[j],ldm_entities);
-                                for (k = 0; k < get_buffer_length(i_cubes); k++)
-                                {
-                                    set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) + x_off * TILE_SIZE * 10);
-                                    set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) + y_off * TILE_SIZE * 10);
-                                }
 
-                                for (k = 0; k < get_buffer_length(j_cubes); k++)
+                                if (get_buffer_size(j_cubes) > get_buffer_size(i_cubes))
                                 {
-                                    set_buffer_fieldui(j_cubes,k,cm_tex,0);
-                                }
+                                    int x_off = xoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
+                                    int y_off = yoff - (int)get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
 
-                                append_buffer_at(i_cubes,j_cubes);
+                                    for (k = 0; k < get_buffer_length(i_cubes); k++)
+                                    {
+                                        set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) + x_off * TILE_SIZE * 10);
+                                        set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) + y_off * TILE_SIZE * 10);
+                                    }
+
+                                    append_buffer_at(i_cubes,j_cubes);
+                                }
+                                else
+                                {  
+                                    for (k = 0; k < get_buffer_length(i_cubes); k++)
+                                    {
+                                        set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) + xoff * TILE_SIZE * 10);
+                                        set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) + yoff * TILE_SIZE * 10);
+                                    }
+
+                                    append_buffer_at(j_cubes,i_cubes);
+
+                                    set_buffer_fieldv(loaded_world,indices[i],ldm_entities,j_cubes);
+                                    set_buffer_fieldv(loaded_world,indices[j],ldm_entities,i_cubes);
+                                }
 
                                 deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
                                 set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
+
+                                merges[indices[j]] = indices[i];
                             }
                         }
                     }
@@ -428,9 +426,50 @@ void render_draw_buffer()
         }
     }
 
-    /*
-        Indices irgendwie sortieren, wenn gemerged wurde
-    */
+    unsigned int step;
+
+    for (step = 0; step < num_chunks - 1; ++step)
+    {
+        unsigned int i,swapped = 0;
+        for (i = 0; i < num_chunks - step - 1; ++i)
+        {
+            unsigned int this_x = offsets[indices[i]][0];
+            unsigned int this_y = offsets[indices[i]][1];
+            unsigned int this_xmax = offsets[indices[i]][0] + 1;
+            unsigned int this_ymax = offsets[indices[i]][1] + 1;
+
+            unsigned int other_x = offsets[indices[i+1]][0];
+            unsigned int other_y = offsets[indices[i+1]][1];
+            unsigned int other_xmax = offsets[indices[i+1]][0] + 1;
+            unsigned int other_ymax = offsets[indices[i+1]][1] + 1;
+
+            if (merges[indices[i]] != -1)
+            {
+                this_xmax += offsets[merges[indices[i]]][0] - this_x;
+                this_ymax += offsets[merges[indices[i]]][1] - this_y;
+            }
+
+            if (((this_xmax <= other_x) && (other_ymax <= this_y)) || ((other_xmax <= this_x) && (this_ymax <= other_y)))
+            {
+
+            }
+            else if ((this_xmax <= other_x) || (this_ymax <= other_y))
+            {
+                
+            }
+            else if ((other_xmax <= this_x) || (other_ymax <= this_y))
+            {
+                unsigned int temp = indices[i];
+                indices[i] = indices[i+1];
+                indices[i+1] = temp;
+            }
+        }
+
+        if (swapped == 0)
+        {
+            break;
+        }
+    }
 
     for (i = 0; i < num_chunks; i++)
     {
@@ -444,7 +483,6 @@ void render_draw_buffer()
             if (cubes == NULL)
                 continue;
 
-            /*remove_invisible(cubes,xoff,yoff);*/
             depth_sort(cubes);
 
             while(iterate_over(cubes))
