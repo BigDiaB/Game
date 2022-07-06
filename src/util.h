@@ -538,6 +538,30 @@ void render_draw_buffer()
         indices[i] = i;
     }
 
+    unsigned int step;
+
+    for (step = 0; step < num_chunks - 1; ++step)
+    {
+        unsigned int i,swapped = 0;
+        for (i = 0; i < num_chunks - step - 1; ++i)
+        {
+            if (offsets[indices[i]][0] + offsets[indices[i]][1] > offsets[indices[i+1]][0] + offsets[indices[i+1]][1])
+            {
+                unsigned int temp = indices[i];
+                indices[i] = indices[i+1];
+                indices[i+1] = temp;
+
+                swapped = 1;
+            }
+        }
+
+        if (swapped == 0)
+        {
+            break;
+        }
+    }
+    
+
     unsigned int appendages[get_buffer_length(entity_buffer)];
     memset(appendages,0,get_buffer_length(entity_buffer) * sizeof(unsigned int));
 
@@ -640,10 +664,6 @@ void render_draw_buffer()
             }
         }
     }
-
-
-
-    unsigned int step;
 
     for (step = 0; step < num_chunks - 1; ++step)
     {
