@@ -4,13 +4,17 @@
 #include <string.h>
 #include <sys/time.h>
 
+/*#include <DBG/debug.h>*/
 #include <construct/construct.h>
-#include <DBG/debug.h>
+
 
 #include <SDL2/SDL.h>
 
 const float WINDOW_SCALE = 0.8f;
 const bool VSYNC = false;
+
+const unsigned int WINDOW_FLAGS = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+const unsigned int RENDERER_FLAGS = SDL_RENDERER_ACCELERATED | (VSYNC ? SDL_RENDERER_PRESENTVSYNC : 0);
 
 const unsigned int TILE_SIZE = 200;
 const unsigned int CHUNK_SIZE = 10;
@@ -35,21 +39,21 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     set_buffer_fieldui(entity_buffer,0,3,am_selected);
 
 
-    /* Chunks müssen zwingend in der richtigen Reihenfolge hinzugefügt werden! */
+    /* Chunks müssen zwingend in der richtigen Reihenfolge hinzugefügt werden! TODO: Fixen!*/
     load_chunk("test_chunk.chunk");
     load_chunk("test_chunk2.chunk");
     load_chunk("test_chunk3.chunk");
     load_chunk("test_chunk4.chunk");
 
 
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_EVERYTHING);
     SDL_Rect win_size;
     int render_width = 0, render_height = 0;
     SDL_GetDisplayBounds(0,&win_size);
     win_width = win_size.w * WINDOW_SCALE;
     win_height = win_size.h * WINDOW_SCALE;
-    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    renderer = SDL_CreateRenderer(window, 1, SDL_RENDERER_ACCELERATED | (VSYNC ? SDL_RENDERER_PRESENTVSYNC : 0) );
+    window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, WINDOW_FLAGS);
+    renderer = SDL_CreateRenderer(window, 1, RENDERER_FLAGS);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_GetWindowSize(window,&win_width,&win_height);

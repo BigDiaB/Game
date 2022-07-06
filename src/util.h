@@ -738,14 +738,12 @@ bool check_collider_buffer(int x, int y, int z)
 {   
     int chunksize = CHUNK_SIZE;
     int tilesize = TILE_SIZE;
-    int curr_chunk_x = x / CHUNK_SIZE / TILE_SIZE;
-    int curr_chunk_y = y / CHUNK_SIZE / TILE_SIZE;
     while(iterate_over(collider_buffer))
     {
         int xoff = get_fieldi(cbm_chunkx);
         int yoff = get_fieldi(cbm_chunky);
         #define DIFF(A,B)   (A>B ? A-B : B-A)
-        if (DIFF(curr_chunk_x,xoff) > 1 || DIFF(curr_chunk_y,yoff) > 1)
+        if (DIFF(x,xoff * chunksize * tilesize) >  chunksize * tilesize || DIFF(y,yoff * chunksize * tilesize) > chunksize * tilesize)
         #undef DIFF
             continue;
         int cube_x = get_fieldi(cbm_x);
