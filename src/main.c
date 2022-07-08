@@ -33,10 +33,20 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     float player_x,player_y,player_z;
 
-    set_buffer_fieldf(entity_buffer,0,0,5 * TILE_SIZE);
-    set_buffer_fieldf(entity_buffer,0,1,5 * TILE_SIZE);
-    set_buffer_fieldf(entity_buffer,0,2,1 * TILE_SIZE);
-    set_buffer_fieldui(entity_buffer,0,3,am_selected);
+    resize_buffer(entity_buffer,3);
+
+    while(iterate_over(entity_buffer))
+    {
+        set_fieldf(0,(get_iterator() + 5) * TILE_SIZE);
+        set_fieldf(1,15 * TILE_SIZE);
+        set_fieldf(2,2 * TILE_SIZE);
+        set_fieldui(3,am_default);
+    }
+
+    set_buffer_fieldf(entity_buffer,1,0,5 * TILE_SIZE);
+    set_buffer_fieldf(entity_buffer,1,1,5 * TILE_SIZE);
+    set_buffer_fieldf(entity_buffer,1,2,1 * TILE_SIZE);
+    set_buffer_fieldui(entity_buffer,1,3,am_selected);
 
     load_chunk("test_chunk.chunk");
     load_chunk("test_chunk2.chunk");
@@ -70,9 +80,11 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     while(running)
     {
-        player_x = get_buffer_fieldf(entity_buffer,0,0);
-        player_y = get_buffer_fieldf(entity_buffer,0,1);
-        player_z = get_buffer_fieldf(entity_buffer,0,2);
+        render_draw_buffer();
+
+        player_x = get_buffer_fieldf(entity_buffer,1,0);
+        player_y = get_buffer_fieldf(entity_buffer,1,1);
+        player_z = get_buffer_fieldf(entity_buffer,1,2);
 
         unsigned int i;
         for (i = 0; i < get_buffer_length(loaded_world); i++)
@@ -82,8 +94,20 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
                 add_to_collider_buffer(get_fieldi(cm_x),
                                        get_fieldi(cm_y),
                                        get_fieldi(cm_z),
-                                       get_buffer_fieldui(loaded_world,i,ldm_xoff),get_buffer_fieldui(loaded_world,i,ldm_yoff));
+                                       get_buffer_fieldui(loaded_world,i,ldm_xoff),
+                                       get_buffer_fieldui(loaded_world,i,ldm_yoff));
             }
+        }
+
+        while(iterate_over(entity_buffer))
+        {
+            if (get_iterator() == 1)
+                continue;
+            add_to_collider_buffer(get_fieldf(ebm_x),
+                                   get_fieldf(ebm_y),
+                                   get_fieldf(ebm_z),
+                                   0,
+                                   0);
         }
 
         update_SDL();
@@ -158,18 +182,16 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
             }
         }
 
-        set_buffer_fieldf(entity_buffer,0,0,player_x);
-        set_buffer_fieldf(entity_buffer,0,1,player_y);
-        set_buffer_fieldf(entity_buffer,0,2,player_z);
+        set_buffer_fieldf(entity_buffer,1,0,player_x);
+        set_buffer_fieldf(entity_buffer,1,1,player_y);
+        set_buffer_fieldf(entity_buffer,1,2,player_z);
 
-        render_draw_buffer();
+        if (get_buffer_length(collider_buffer) != 0)
+            resize_buffer(collider_buffer,0);
 
         SDL_SetRenderDrawColor(renderer,0,175,200,255);
         SDL_RenderPresent(renderer);
         SDL_RenderClear(renderer);
-
-        if (get_buffer_length(collider_buffer) != 0)
-            resize_buffer(collider_buffer,0);
     }
 
     safe_world();
