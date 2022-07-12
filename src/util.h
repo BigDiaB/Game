@@ -369,18 +369,23 @@ void depth_sort(int first_index, int last_index, buffer sort_buffer)
     {
         buffer pivot = copy_partial_buffer(sort_buffer,last_index,last_index);
         int i = (first_index - 1),j;
+
+        int step_x = get_buffer_fieldi(sort_buffer,last_index,cm_x);
+        int step_y = get_buffer_fieldi(sort_buffer,last_index,cm_y);
+        int step_z = get_buffer_fieldi(sort_buffer,last_index,cm_z);
+
         for (j = first_index; j < last_index; j++)
         {
             bool condition = false;
 
             int tilesize = TILE_SIZE;
-            int step_x = get_buffer_fieldi(sort_buffer,last_index,cm_x);
-            int step_y = get_buffer_fieldi(sort_buffer,last_index,cm_y);
-            int step_z = get_buffer_fieldi(sort_buffer,last_index,cm_z);
 
             int curr_x = get_buffer_fieldi(sort_buffer,j,cm_x);
             int curr_y = get_buffer_fieldi(sort_buffer,j,cm_y);
             int curr_z = get_buffer_fieldi(sort_buffer,j,cm_z);
+
+            int step_cart_y = (step_x + step_y) / 2 + step_z;
+            int curr_cart_y = (curr_x + curr_y) / 2 + curr_z;
             
             #define AABB(x1,x2,y1,y2,size) (x1 < x2 + size && x2 < x1 + size && y1 < y2 + size && y2 < y1 + size)
             if ((AABB(step_x,curr_x,step_y,curr_y,tilesize)))
@@ -407,16 +412,12 @@ void depth_sort(int first_index, int last_index, buffer sort_buffer)
             #undef AABB
             else if ((int)step_z % tilesize == 0 && (int)curr_z % tilesize == 0)
             {
-                if (step_x + step_y + 2 * step_z > curr_x + curr_y + 2 * curr_z)
+                if (step_cart_y > curr_cart_y)
                 {
                     condition = true;
                 }
             }
-            else if (step_x + step_y > curr_x + curr_y)
-            {
-                condition = true;
-            }
-            else if (step_x + step_y + step_z * 2 > curr_x + curr_y + curr_z * 2)
+            else if (step_cart_y > curr_cart_y)
             {
                 condition = true;
             }
@@ -569,8 +570,10 @@ void render_draw_buffer()
     unsigned int appendages[get_buffer_length(entity_buffer)];
     memset(appendages,0,get_buffer_length(entity_buffer) * sizeof(unsigned int));
 
-    int merges[num_chunks];
-    memset(merges,-1,num_chunks * sizeof(int));
+    unsigned int merge_fill[num_chunks];
+    int merges[num_chunks][num_chunks - 1];
+    memset(merge_fill,0,num_chunks * sizeof(unsigned int));
+    memset(merges,-1,num_chunks * (num_chunks - 1) * sizeof(int));
 
     for (i = 0; i < num_chunks; i++)
     {
@@ -650,7 +653,33 @@ void render_draw_buffer()
                                 deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
                                 set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
 
-                                merges[indices[j]] = indices[i];
+                                merges[indices[j]][merge_fill[indices[j]]++] = indices[i];
+                            }
+                            else if (get_buffer_fieldv(loaded_world,indices[j],ldm_entities) == NULL && get_buffer_fieldv(loaded_world,indices[i],ldm_entities) != NULL)
+                            {
+                                unsigned int k,g;
+                                int idx = -1;
+                                for (k = 0; k < num_chunks; k++)
+                                {
+                                    for (g = 0; g < num_chunks - 1; g++)
+                                        if (merges[indices[k]][g] == (int)indices[j])
+                                            idx = k;
+                                }
+
+                                buffer i_cubes = get_buffer_fieldv(loaded_world,indices[i],ldm_entities);
+
+                                for (k = 0; k < get_buffer_length(i_cubes); k++)
+                                {
+                                    set_buffer_fieldi(i_cubes,k,cm_x,get_buffer_fieldi(i_cubes,k,cm_x) + (xoff - (int)get_buffer_fieldui(loaded_world,indices[idx],ldm_xoff)) * TILE_SIZE * 10);
+                                    set_buffer_fieldi(i_cubes,k,cm_y,get_buffer_fieldi(i_cubes,k,cm_y) + (yoff - (int)get_buffer_fieldui(loaded_world,indices[idx],ldm_yoff)) * TILE_SIZE * 10);
+                                }
+
+                                append_buffer_at(get_buffer_fieldv(loaded_world,indices[i],ldm_entities),get_buffer_fieldv(loaded_world,indices[idx],ldm_entities));
+
+                                deinit_buffer(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+                                set_buffer_fieldv(loaded_world,indices[i],ldm_entities,NULL);
+
+                                merges[indices[idx]][merge_fill[indices[idx]]++] = indices[i];
                             }
                         }
                     }
@@ -660,21 +689,22 @@ void render_draw_buffer()
 
                     if (get_buffer_fieldv(loaded_world,indices[i],ldm_entities) == NULL)
                     {
-                        unsigned int j;
+                        unsigned int j,g;
                         for (j = 0; j < num_chunks; j++)
                         {
-                            if (merges[indices[j]] == (int)indices[i])
-                            {
-                                buffer appendage = create_single_buffer_element(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
-                                set_buffer_fieldi(appendage,0,cm_x,get_fieldf(ebm_x) - (get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE);
-                                set_buffer_fieldi(appendage,0,cm_y,get_fieldf(ebm_y) - (get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE);
-                                set_buffer_fieldi(appendage,0,cm_z,get_fieldf(ebm_z));
-                                set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,get_iterator()));
-                                append_buffer_element_at(appendage,0,get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
+                            for (g = 0; g < num_chunks -1; g++)
+                                if (merges[indices[j]][g] == (int)indices[i])
+                                {
+                                    buffer appendage = create_single_buffer_element(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
+                                    set_buffer_fieldi(appendage,0,cm_x,get_fieldf(ebm_x) - (get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE);
+                                    set_buffer_fieldi(appendage,0,cm_y,get_fieldf(ebm_y) - (get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE);
+                                    set_buffer_fieldi(appendage,0,cm_z,get_fieldf(ebm_z));
+                                    set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,get_iterator()));
+                                    append_buffer_element_at(appendage,0,get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
 
-                                deinit_buffer(appendage);
-                                break;
-                            }
+                                    deinit_buffer(appendage);
+                                    break;
+                                }
                         }
                     }
                     else
@@ -693,9 +723,86 @@ void render_draw_buffer()
         }
     }
 
+    for (i = 0; i < num_chunks; i++)
+    {
+        if (merge_fill[indices[i]] != 0)
+        {
+            unsigned int min_x_off = offsets[indices[i]][0];
+            unsigned int min_y_off = offsets[indices[i]][1];
+
+            unsigned int max_x_off = 0;
+            unsigned int max_y_off = 0;
+
+            unsigned int j;
+
+            for (j = 0; j < merge_fill[indices[i]]; j++)
+            {
+                if (min_x_off > offsets[merges[indices[i]][j]][0])
+                    min_x_off = offsets[merges[indices[i]][j]][0];
+
+                if (min_y_off > offsets[merges[indices[i]][j]][1])
+                    min_y_off = offsets[merges[indices[i]][j]][1];
+
+                if (max_x_off < offsets[merges[indices[i]][j]][0])
+                    max_x_off = offsets[merges[indices[i]][j]][0];
+
+                if (max_y_off < offsets[merges[indices[i]][j]][1])
+                    max_y_off = offsets[merges[indices[i]][j]][1];
+            }
+
+            unsigned int x,y;
+
+            for (y = min_y_off; y < max_y_off + 1; y++)
+            {
+                for (x = min_x_off; x < max_x_off + 1; x++)
+                {
+                    for (j = 0; j < num_chunks; j++)
+                    {
+                        if (offsets[indices[j]][0] == x && offsets[indices[j]][1] == y)
+                        {
+                            if (i == j)
+                                continue;
+
+                            unsigned int k;
+                            bool already_merged = false;
+                            for (k = 0; k < merge_fill[indices[i]] + 1; k++)
+                            {   
+                                int idx = indices[j];
+                                if (merges[indices[i]][k] == idx)
+                                    already_merged = true;
+                            }
+
+                            if (!already_merged)
+                            {
+                                /* Append j onto i */
+                                buffer j_cubes = get_buffer_fieldv(loaded_world,indices[j],ldm_entities);
+
+                                unsigned int xoff = get_buffer_fieldui(loaded_world,indices[j],ldm_xoff);
+                                unsigned int yoff = get_buffer_fieldui(loaded_world,indices[j],ldm_yoff);
+
+                                for (k = 0; k < get_buffer_length(j_cubes); k++)
+                                {
+                                    set_buffer_fieldi(j_cubes,k,cm_x,get_buffer_fieldi(j_cubes,k,cm_x) + (xoff - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_xoff)) * TILE_SIZE * 10);
+                                    set_buffer_fieldi(j_cubes,k,cm_y,get_buffer_fieldi(j_cubes,k,cm_y) + (yoff - (int)get_buffer_fieldui(loaded_world,indices[i],ldm_yoff)) * TILE_SIZE * 10);
+                                }
+
+                                append_buffer_at(get_buffer_fieldv(loaded_world,indices[j],ldm_entities),get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
+
+                                deinit_buffer(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
+                                set_buffer_fieldv(loaded_world,indices[j],ldm_entities,NULL);
+
+                                merges[indices[i]][merge_fill[indices[i]]++] = indices[j];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for (step = 0; step < num_chunks - 1; ++step)
     {
-        unsigned int i,swapped = 0;
+        unsigned int i,swapped = 0,g;
         for (i = 0; i < num_chunks - step - 1; ++i)
         {
             unsigned int this_x = offsets[indices[i]][0];
@@ -708,10 +815,13 @@ void render_draw_buffer()
             unsigned int other_xmax = offsets[indices[i+1]][0] + 1;
             unsigned int other_ymax = offsets[indices[i+1]][1] + 1;
 
-            if (merges[indices[i]] != -1)
+            for (g = 0; g < merge_fill[indices[i]]; g++)
             {
-                this_xmax += offsets[merges[indices[i]]][0] - this_x;
-                this_ymax += offsets[merges[indices[i]]][1] - this_y;
+                if (merges[indices[i]][g] != -1)
+                {
+                    this_xmax += offsets[merges[indices[i]][g]][0] - this_x;
+                    this_ymax += offsets[merges[indices[i]][g]][1] - this_y;
+                }
             }
 
             if (!((this_xmax <= other_x) ||  (this_ymax <= other_y)) && ((other_xmax <= this_x) || (other_ymax <= this_y)))

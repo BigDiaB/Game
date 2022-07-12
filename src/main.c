@@ -38,7 +38,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     while(iterate_over(entity_buffer))
     {
         set_fieldf(0,(get_iterator() + 5) * TILE_SIZE);
-        set_fieldf(1,15 * TILE_SIZE);
+        set_fieldf(1,9.5f * TILE_SIZE);
         set_fieldf(2,2 * TILE_SIZE);
         set_fieldui(3,am_default);
     }
@@ -80,8 +80,6 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     while(running)
     {
-        render_draw_buffer();
-
         player_x = get_buffer_fieldf(entity_buffer,1,0);
         player_y = get_buffer_fieldf(entity_buffer,1,1);
         player_z = get_buffer_fieldf(entity_buffer,1,2);
@@ -132,21 +130,26 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
             }
             else
             {
+                unsigned int cam_speed = CAM_SPEED;
+
+                if ((current_actions[act_cam_move_right] || current_actions[act_cam_move_left]) && (current_actions[act_cam_move_up] || current_actions[act_cam_move_down]))
+                    cam_speed /= sqrt(2);
+
                 if (current_actions[act_cam_move_right])
-                    cam_x -= CAM_SPEED;
+                    cam_x -= cam_speed;
 
                 if (current_actions[act_cam_move_left])
-                    cam_x += CAM_SPEED;
+                    cam_x += cam_speed;
 
                 if (current_actions[act_cam_move_down])
-                    cam_y -= CAM_SPEED;
+                    cam_y -= cam_speed;
 
                 if (current_actions[act_cam_move_up])
-                    cam_y += CAM_SPEED;
+                    cam_y += cam_speed;
             }
 
             float last_x = player_x, last_y = player_y, last_z = player_z;
-            
+
             unsigned int speed = 5;
 
             if (current_actions[act_move_right])
@@ -188,6 +191,8 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
         if (get_buffer_length(collider_buffer) != 0)
             resize_buffer(collider_buffer,0);
+
+        render_draw_buffer();
 
         SDL_SetRenderDrawColor(renderer,0,175,200,255);
         SDL_RenderPresent(renderer);
