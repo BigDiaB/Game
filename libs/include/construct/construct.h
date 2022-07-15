@@ -27,6 +27,8 @@ enum construct_types {UINT,INT,FLOAT,CHAR,UCHAR,VOID};
 void scramble_buffer(buffer target);
 void scramble();
 
+void copy_partial_buffer_to_buffer(buffer src,unsigned int src_startidx, unsigned int src_endidx,buffer target);
+
 /* WIP: */
 /* <\Todo> */
 

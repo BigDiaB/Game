@@ -201,6 +201,7 @@ void load_chunk(char* filename)
     set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,ldm_yoff,*((unsigned int*)(bin_data + sizeof(unsigned int) * 2)));
     set_buffer_fieldui(loaded_world,get_buffer_length(loaded_world) - 1,ldm_drawflag,1);
     set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,ldm_cubes,init_buffer(num_elements));
+    set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,ldm_entities,NULL);
     set_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,ldm_filename,malloc(strlen(filename) + 1));
     strcpy(get_buffer_fieldv(loaded_world,get_buffer_length(loaded_world) - 1,ldm_filename),filename);
 
@@ -363,7 +364,7 @@ void display_frame_time(double tick_time)
     }
 }
 
-void depth_sort(int first_index, int last_index, buffer sort_buffer)
+void depth_sort_quick(int first_index, int last_index, buffer sort_buffer)
 {
     if (first_index < last_index) 
     {
@@ -410,12 +411,16 @@ void depth_sort(int first_index, int last_index, buffer sort_buffer)
                 }
             }
             #undef AABB
-            else if ((int)step_z % tilesize == 0 && (int)curr_z % tilesize == 0)
+            else if (step_z == curr_z)
             {
-                if (step_cart_y > curr_cart_y)
+                if (step_x + step_y + 2 * step_z > curr_x + curr_y + 2 * curr_z)
                 {
                     condition = true;
                 }
+            }
+            else if (((int)step_x / tilesize * 2) * tilesize * 2 + ((int)step_y / tilesize * 2) * tilesize * 2 + ((int)step_z / tilesize * 2) * tilesize * 2 * 2 > ((int)curr_x / tilesize * 2) * tilesize * 2 + ((int)curr_y / tilesize * 2) * tilesize * 2 + ((int)curr_z / tilesize * 2) * tilesize * 2 * 2)
+            {
+                condition = true;
             }
             else if (step_cart_y > curr_cart_y)
             {
@@ -429,8 +434,8 @@ void depth_sort(int first_index, int last_index, buffer sort_buffer)
             }
         }
         swap_buffer_at(sort_buffer,i+1,last_index);
-        depth_sort(first_index, i,sort_buffer);
-        depth_sort(i + 2, last_index,sort_buffer);
+        depth_sort_quick(first_index, i,sort_buffer);
+        depth_sort_quick(i + 2, last_index,sort_buffer);
         deinit_buffer(pivot);
     }
 }
@@ -445,7 +450,7 @@ double tick()
     return elapsedTime;
 }
 
-void render_draw_buffer();
+void render_draw_isometric();
 
 int dynamic_screen_resize(__attribute__((unused))void *userdata, SDL_Event * event)
 {
@@ -454,7 +459,7 @@ int dynamic_screen_resize(__attribute__((unused))void *userdata, SDL_Event * eve
         if (event->window.event == SDL_WINDOWEVENT_RESIZED)
         {
             SDL_GetWindowSize(window,&win_width,&win_height);
-            render_draw_buffer();
+            render();
             SDL_SetRenderDrawColor(renderer,0,175,200,255);
             SDL_RenderPresent(renderer);
             SDL_RenderClear(renderer);
@@ -530,11 +535,11 @@ SDL_FRect get_screen_frect()
     return screen;
 }
 
-void render_draw_buffer()
+void* init_draw_isometric(bool return_indices)
 {
     unsigned int i, num_chunks = get_buffer_length(loaded_world);
     unsigned int offsets[num_chunks][2];
-    unsigned int indices[num_chunks];
+    unsigned int* indices = return_indices ? malloc(sizeof(unsigned int) * num_chunks) : alloca(sizeof(unsigned int) * num_chunks);
 
     for (i = 0; i < num_chunks; i++)
     {
@@ -588,44 +593,42 @@ void render_draw_buffer()
         SDL_Rect screen = get_screen_rect();
         translate_rect_ui(&screen);
 
-        while(iterate_over(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes)))
+        unsigned int iter;
+        for (iter = 0; iter < get_buffer_length(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes)); iter++)
         {
             SDL_Rect cube = {0,0,TILE_SIZE,TILE_SIZE};
 
-            int iso_x = (get_fieldi(cm_x) + (xoff * CHUNK_SIZE * TILE_SIZE));
-            int iso_y = (get_fieldi(cm_y) + (yoff * CHUNK_SIZE * TILE_SIZE));
+            int iso_x = (get_buffer_fieldi(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes),iter,cm_x) + (xoff * CHUNK_SIZE * TILE_SIZE));
+            int iso_y = (get_buffer_fieldi(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes),iter,cm_y) + (yoff * CHUNK_SIZE * TILE_SIZE));
 
             cube.x = (iso_x - iso_y) / 2 + cam_x;
-            cube.y = ((iso_y + iso_x) / 2 - get_fieldi(cm_z)) / 2 + cam_y;
+            cube.y = ((iso_y + iso_x) / 2 - get_buffer_fieldi(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes),iter,cm_z)) / 2 + cam_y;
 
             translate_rect(&cube);
             #define AABB_RECT(A,B)  (A.x < B.x + B.w && B.x < A.x + A.w && A.y < B.y + B.h && B.y < A.y + A.h)
             if (AABB_RECT(cube,screen))
             #undef AABB_RECT
-            {
-                append_element_to(get_buffer_fieldv(loaded_world,indices[i],ldm_entities),get_iterator());
-            }
+                append_buffer_element_at(get_buffer_fieldv(loaded_world,indices[i],ldm_cubes),iter,get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
         }
 
-        while(iterate_over(entity_buffer))
+        for (iter = 0; iter < get_buffer_length(entity_buffer); iter++)
         {
             #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
-            if (AABB(get_fieldf(ebm_x),xoff * 10 * TILE_SIZE,
-                     get_fieldf(ebm_y),yoff * 10 * TILE_SIZE,
+            if (AABB(get_buffer_fieldf(entity_buffer,iter,ebm_x),xoff * 10 * TILE_SIZE,
+                     get_buffer_fieldf(entity_buffer,iter,ebm_y),yoff * 10 * TILE_SIZE,
                      TILE_SIZE,10 * TILE_SIZE,
                      TILE_SIZE,10 * TILE_SIZE))
             {
-                appendages[get_iterator()]++;
-
-                if (appendages[get_iterator()] > 1)
+                appendages[iter]++;
+                if (appendages[iter] > 1)
                 {
                     unsigned int j;
                     for (j = 0; j < get_buffer_length(loaded_world); j++)
                     {
                         if (j == i)
                             continue;
-                        if (AABB(get_fieldf(ebm_x),(get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE,
-                                 get_fieldf(ebm_y),(get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE,
+                        if (AABB(get_buffer_fieldf(entity_buffer,iter,ebm_x),(get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE,
+                                 get_buffer_fieldf(entity_buffer,iter,ebm_y),(get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE,
                                  TILE_SIZE,10 * TILE_SIZE,
                                  TILE_SIZE,10 * TILE_SIZE))
                         #undef AABB
@@ -686,7 +689,6 @@ void render_draw_buffer()
                 }
                 else
                 {
-
                     if (get_buffer_fieldv(loaded_world,indices[i],ldm_entities) == NULL)
                     {
                         unsigned int j,g;
@@ -696,10 +698,10 @@ void render_draw_buffer()
                                 if (merges[indices[j]][g] == (int)indices[i])
                                 {
                                     buffer appendage = create_single_buffer_element(get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
-                                    set_buffer_fieldi(appendage,0,cm_x,get_fieldf(ebm_x) - (get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE);
-                                    set_buffer_fieldi(appendage,0,cm_y,get_fieldf(ebm_y) - (get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE);
-                                    set_buffer_fieldi(appendage,0,cm_z,get_fieldf(ebm_z));
-                                    set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,get_iterator()));
+                                    set_buffer_fieldi(appendage,0,cm_x,get_buffer_fieldf(entity_buffer,iter,ebm_x) - (get_buffer_fieldui(loaded_world,indices[j],ldm_xoff)) * 10 * TILE_SIZE);
+                                    set_buffer_fieldi(appendage,0,cm_y,get_buffer_fieldf(entity_buffer,iter,ebm_y) - (get_buffer_fieldui(loaded_world,indices[j],ldm_yoff)) * 10 * TILE_SIZE);
+                                    set_buffer_fieldi(appendage,0,cm_z,get_buffer_fieldf(entity_buffer,iter,ebm_z));
+                                    set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,iter));
                                     append_buffer_element_at(appendage,0,get_buffer_fieldv(loaded_world,indices[j],ldm_entities));
 
                                     deinit_buffer(appendage);
@@ -710,10 +712,10 @@ void render_draw_buffer()
                     else
                     {
                         buffer appendage = create_single_buffer_element(get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
-                        set_buffer_fieldi(appendage,0,cm_x,get_fieldf(ebm_x) - (xoff) * 10 * TILE_SIZE);
-                        set_buffer_fieldi(appendage,0,cm_y,get_fieldf(ebm_y) - (yoff) * 10 * TILE_SIZE);
-                        set_buffer_fieldi(appendage,0,cm_z,get_fieldf(ebm_z));
-                        set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,get_iterator()));
+                        set_buffer_fieldi(appendage,0,cm_x,get_buffer_fieldf(entity_buffer,iter,ebm_x) - (xoff) * 10 * TILE_SIZE);
+                        set_buffer_fieldi(appendage,0,cm_y,get_buffer_fieldf(entity_buffer,iter,ebm_y) - (yoff) * 10 * TILE_SIZE);
+                        set_buffer_fieldi(appendage,0,cm_z,get_buffer_fieldf(entity_buffer,iter,ebm_z));
+                        set_buffer_fieldui(appendage,0,cm_tex,get_entity_texture_index(entity_buffer,iter));
                         append_buffer_element_at(appendage,0,get_buffer_fieldv(loaded_world,indices[i],ldm_entities));
 
                         deinit_buffer(appendage);
@@ -837,6 +839,21 @@ void render_draw_buffer()
             break;
         }
     }
+    return return_indices ? indices : NULL;
+    
+}
+
+void render_draw_isometric(int* indices)
+{
+    unsigned int i,num_chunks = get_buffer_length(loaded_world);
+
+    if (indices == NULL)
+    {
+        indices = malloc(sizeof(unsigned int) * num_chunks);
+
+        for (i = 0; i < num_chunks; i++)
+            indices[i] = i;
+    }
 
     for (i = 0; i < num_chunks; i++)
     {
@@ -847,18 +864,19 @@ void render_draw_buffer()
             if (cubes == NULL)
                 continue;
 
-            depth_sort(0,get_buffer_length(cubes) -1,cubes);
+            depth_sort_quick(0,get_buffer_length(cubes) -1,cubes);
 
             unsigned int xoff = get_buffer_fieldui(loaded_world,indices[i],ldm_xoff);
             unsigned int yoff = get_buffer_fieldui(loaded_world,indices[i],ldm_yoff);
 
-            while(iterate_over(cubes))
+            unsigned int iter;
+            for (iter = 0; iter < get_buffer_length(cubes); iter++)
             {
                 SDL_FRect r;
 
-                int iso_x = get_fieldi(cm_x) + 10 * TILE_SIZE * xoff;
-                int iso_y = get_fieldi(cm_y) + 10 * TILE_SIZE * yoff;
-                int iso_z = get_fieldi(cm_z);
+                int iso_x = get_buffer_fieldi(cubes,iter,cm_x) + 10 * TILE_SIZE * xoff;
+                int iso_y = get_buffer_fieldi(cubes,iter,cm_y) + 10 * TILE_SIZE * yoff;
+                int iso_z = get_buffer_fieldi(cubes,iter,cm_z);
 
                 r.x = (iso_x - iso_y) / 2 + cam_x;
                 r.y = ((iso_y + iso_x) / 2 - iso_z) / 2 + cam_y;
@@ -869,7 +887,7 @@ void render_draw_buffer()
 
                 #define AABB(x1,x2,y1,y2,sx1,sx2,sy1,sy2) (x1 < x2 + sx2 && x2 < x1 + sx1 && y1 < y2 + sy2 && y2 < y1 + sy1)
                 if (AABB(0,r.x,0,r.y,win_width,r.w,win_height,r.h))
-                    SDL_RenderCopyF(renderer,assets[get_fieldui(cm_tex)],NULL,&r);
+                    SDL_RenderCopyF(renderer,assets[get_buffer_fieldui(cubes,iter,cm_tex)],NULL,&r);
                 #undef AABB
             }
 
@@ -877,8 +895,6 @@ void render_draw_buffer()
         }
     }
 }
-
-
 
 void add_to_collider_buffer(int x, int y, int z, int chunkx, int chunky)
 {
@@ -900,10 +916,12 @@ bool check_collider_buffer(int x, int y, int z)
     {
         int xoff = get_fieldi(cbm_chunkx);
         int yoff = get_fieldi(cbm_chunky);
-        /*#define DIFF(A,B)   (A>B ? A-B : B-A)
-        if (DIFF(x,xoff * chunksize * tilesize) >  chunksize * tilesize || DIFF(y,yoff * chunksize * tilesize) > chunksize * tilesize)
-        #undef DIFF
-            continue;*/
+
+        if (xoff && yoff)
+            #define DIFF(A,B)   (A>B ? A-B : B-A)
+            if (DIFF(x,xoff * chunksize * tilesize) >  chunksize * tilesize || DIFF(y,yoff * chunksize * tilesize) > chunksize * tilesize)
+            #undef DIFF
+                continue;
         int cube_x = get_fieldf(cbm_x);
         int cube_y = get_fieldf(cbm_y);
         int cube_z = get_fieldf(cbm_z);
