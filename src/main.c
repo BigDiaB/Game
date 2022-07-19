@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/time.h>
 
-/*#include <DBG/debug.h>
-#include <construct/construct.h>*/
-
 #include <SDL2/SDL.h>
+#include <DBG/debug.h>
+#include <construct/construct.h>
 
 const bool ENABLE_VSYNC = true;
 const bool ENABLE_SCREEN_RESIZE = true;
@@ -23,30 +23,23 @@ const double WORLD_ZOOM = 0.5f;
 const double WORLD_SIZE = 1000.0f / WORLD_ZOOM;
 
 const double CAM_SMOOTH = 0.008f * 1000 / WORLD_SIZE;
-const unsigned int CAM_SPEED = 5;
+const double CAM_SPEED = 5.0f;
+
+const double MS_PER_GAMETICK = 10.0f;
 
 #include "util.h"
 
 void render()
-{
-    SDL_Rect world = get_world_rect();
-    SDL_Rect screen = get_screen_rect();
+{   
+    rect ui_rect = {0,0,500,500};
 
-    SDL_Rect ui_rect = {0,0,500,500};
-    align_ui_rect(&ui_rect,align_right);
+    rect obj_rect = {250,250,500,500};
 
-    SDL_Rect obj_rect = {250,250,500,500};
+    change_draw_color(255,255,255,255);
+    render_rect(&ui_rect,true,true,align_corner);
+    render_rect(&obj_rect,true,false,align_none);
 
-    SDL_SetRenderDrawColor(renderer,255,255,255,255);
-    SDL_RenderFillRect(renderer,translate_rect_ui(&ui_rect));
-    SDL_RenderFillRect(renderer,translate_rect(&obj_rect));
-
-    SDL_SetRenderDrawColor(renderer,0,255,0,255);
-    SDL_RenderDrawRect(renderer,translate_rect_ui(&world));
-
-    SDL_SetRenderDrawColor(renderer,255,0,0,255);
-    SDL_RenderDrawRect(renderer,translate_rect_ui(&screen));
-
+    draw_debug_boundaries();
     SDL_SetRenderDrawColor(renderer,125,125,125,255);
     SDL_RenderPresent(renderer);
     SDL_RenderClear(renderer);
@@ -57,9 +50,9 @@ void update(double dt)
     accumulator += dt;
     /* Handle input-logic here (every frame) */
 
-    while(accumulator >= 10.0f)
+    while(accumulator >= MS_PER_GAMETICK)
     {
-        accumulator -= 10.0f;
+        accumulator -= MS_PER_GAMETICK;
         /* Handle game-logic here (every tick, aka 10ms) */
     }
 }
@@ -77,9 +70,108 @@ bool gameloop()
     return running;
 }
 
+bool has_component(unsigned int entity, buffer component, unsigned int* idx)
+{
+    unsigned int i, size = get_buffer_length(component);
+
+    for (i = 0; i < size; i++)
+    {
+        if (get_buffer_fieldui(component,i,0) == entity)
+        {
+            if (idx != NULL)
+                *idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+void add_component(unsigned int entity, buffer component)
+{
+    if (has_component(entity,component,NULL))
+        return;
+    resize_buffer(component,get_buffer_length(component)+1);
+    set_buffer_fieldui(component,get_buffer_length(component)-1,0,entity);
+}
+
+void remove_component(unsigned int entity, buffer component)
+{
+    unsigned int index;
+    if (!has_component(entity,component,&index))
+        return;
+
+    remove_buffer_at(component,index);
+}
+
+unsigned int* entities = NULL;
+
+unsigned int create_entity()
+{
+    if (entities == NULL)
+    {
+        entities = malloc(sizeof(unsigned int));
+        entities[0] = 0;
+    }
+
+    entities[0]++;
+    if (entities[0] == 0)
+    {
+        puts("More than 2^32 entities! Internal buffer overflown!");
+        exit(EXIT_FAILURE);
+    }
+    entities = realloc(entities,entities[0]);
+
+    /* somehow get new id*/
+    return entities[entities[0]] = pseudo_random_premutation(entities[0]-1);
+}
+
+void destroy_entity(unsigned int entity)
+{
+    unsigned int i;
+    bool found = false;
+    for (i = 1; i < entities[0] +1; i++)
+    {
+        found = entities[i] == entity;
+        if (found)
+            break;
+    }
+
+    if (found)
+    {
+        if (--entities[0] == 0)
+        {
+            free(entities);
+            entities = NULL;
+            return;
+        }
+
+        for (; i < entities[0]; i++)
+        {
+            entities[i] = entities[i + 1];
+        }
+    }
+}
+
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
-    SDL_Init(SDL_INIT_EVERYTHING);
+    buffer tag_component = init_bufferva(0,2,UINT,VOID);
+
+    unsigned int entity = create_entity();
+    add_component(entity,tag_component);
+
+    if (has_component(entity,tag_component,NULL))
+        puts("Hello, World!");
+
+    remove_component(entity,tag_component);
+    destroy_entity(entity);
+
+    deinit_buffer(tag_component);
+
+
+
+    exit(EXIT_SUCCESS);
+
+    SDL_Init(SDL_INIT_VIDEO);
     SDL_Rect win_size;
     int render_width = 0, render_height = 0;
     SDL_GetDisplayBounds(0,&win_size);
@@ -102,5 +194,6 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    exit(0);
+    
+    exit(EXIT_SUCCESS);
 }

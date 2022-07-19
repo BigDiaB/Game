@@ -1,6 +1,15 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+unsigned int pseudo_random_premutation(unsigned int x)
+{
+    const unsigned int prime = 4294967291;
+    if (x >= prime)
+        return x;
+    unsigned int residue = ((unsigned long long) x * x) % prime;
+    return (x <= prime / 2) ? residue : prime - residue;
+}
+
 SDL_Event event;
 const Uint8* current_keys;
 Uint8* last_keys = NULL;
@@ -52,12 +61,84 @@ float map_num(float num, float min1, float max1, float min2, float max2)
     return (num - min1) * (max2 - min2) / (max1 - min1) + min2;
 }
 
-SDL_Rect* translate_rect(SDL_Rect* r)
+struct rect
+{
+    float x,y;
+    unsigned int w,h;
+};
+
+typedef struct rect rect;
+
+void change_draw_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+    SDL_SetRenderDrawColor(renderer,r,g,b,a);
+}
+
+enum align_type
+{
+    align_none, align_right, align_bottom, align_center, align_corner
+};
+
+void align_ui_rect(rect* r,enum align_type align)
+{
+    if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
+    {
+        float stretch = (float)win_width / (float)win_height;
+
+        switch(align)
+        {
+            case align_right:
+            r->x = WORLD_SIZE * stretch - r->x - r->w;
+            break;
+            case align_bottom:
+            r->y = WORLD_SIZE - r->y - r->h;
+            break;
+            case align_center:
+            r->x = WORLD_SIZE / 2 * stretch - r->x - r->w / 2;
+            r->y = WORLD_SIZE / 2 - r->y - r->h / 2;
+            break;
+            case align_corner:
+            r->x = WORLD_SIZE * stretch - r->x - r->w;
+            r->y = WORLD_SIZE - r->y - r->h;
+            break;
+            case align_none:
+            default:
+            break;
+        }
+    }
+    else
+    {
+        float stretch = (float)win_height / (float)win_width;
+
+        switch(align)
+        {
+            case align_right:
+            r->x = WORLD_SIZE * 16.0f / 9.0f - r->x - r->w;
+            break;
+            case align_bottom:
+            r->y = WORLD_SIZE * stretch * 16.0f / 9.0f - r->y - r->h;
+            break;
+            case align_center:
+            r->x = WORLD_SIZE / 2 * 16.0f / 9.0f - r->x - r->w / 2;
+            r->y = WORLD_SIZE / 2 * stretch * 16.0f / 9.0f - r->y - r->h / 2;
+            break;
+            case align_corner:
+            r->x = WORLD_SIZE * 16.0f / 9.0f - r->x - r->w;
+            r->y = WORLD_SIZE * stretch * 16.0f / 9.0f - r->y - r->h;
+            break;
+            case align_none:
+            default:
+            break;
+        }
+    }
+}
+
+rect* translate_rect(rect* r)
 {
 
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
     {
-        float stretch = (float)win_width / (float)win_height;
+        const float stretch = (float)win_width / (float)win_height;
         r->x = map_num(r->x,0,WORLD_SIZE * stretch,0,win_width);
         r->w = map_num(r->w,0,WORLD_SIZE * stretch,0,win_width);
         r->y = map_num(r->y,0,WORLD_SIZE,0,win_height);
@@ -67,7 +148,7 @@ SDL_Rect* translate_rect(SDL_Rect* r)
     }
     else
     {
-        float stretch = (float)win_height / (float)win_width;
+        const float stretch = (float)win_height / (float)win_width;
         r->x = map_num(r->x,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
         r->w = map_num(r->w,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
         r->y = map_num(r->y,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
@@ -79,12 +160,12 @@ SDL_Rect* translate_rect(SDL_Rect* r)
     return r;
 }
 
-SDL_Rect* translate_rect_ui(SDL_Rect* r)
+rect* translate_rect_ui(rect* r)
 {
 
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
     {
-        float stretch = (float)win_width / (float)win_height;
+        const float stretch = (float)win_width / (float)win_height;
         r->x = map_num(r->x,0,WORLD_SIZE * stretch,0,win_width);
         r->w = map_num(r->w,0,WORLD_SIZE * stretch,0,win_width);
         r->y = map_num(r->y,0,WORLD_SIZE,0,win_height);
@@ -92,7 +173,7 @@ SDL_Rect* translate_rect_ui(SDL_Rect* r)
     }
     else
     {
-        float stretch = (float)win_height / (float)win_width;
+        const float stretch = (float)win_height / (float)win_width;
         r->x = map_num(r->x,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
         r->w = map_num(r->w,0,WORLD_SIZE * 16.0f / 9.0f,0,win_width);
         r->y = map_num(r->y,0,WORLD_SIZE * stretch * 16.0f / 9.0f,0,win_height);
@@ -100,6 +181,26 @@ SDL_Rect* translate_rect_ui(SDL_Rect* r)
     }
 
     return r;
+}
+
+void render_rect(rect* r, bool fill, bool ui, enum align_type align)
+{
+    if (ui)
+    {
+        align_ui_rect(r,align);
+        translate_rect_ui(r);
+    }
+    else
+    {
+        translate_rect(r);
+    }
+
+    SDL_FRect rr = {r->x,r->y,r->w,r->h};
+
+    if (fill)
+        SDL_RenderFillRectF(renderer,&rr);
+    else
+        SDL_RenderDrawRectF(renderer,&rr);
 }
 
 void display_frame_time(double tick_time)
@@ -159,18 +260,18 @@ void update_SDL()
     }
 }
 
-SDL_Rect get_screen_rect()
+rect get_screen_rect()
 {
-    SDL_Rect screen = {0,0,0,0};
+    rect screen = {0,0,0,0};
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
     {
-        float stretch = (float)win_width / (float)win_height;
+        const float stretch = (float)win_width / (float)win_height;
         screen.w = WORLD_SIZE * stretch;
         screen.h = WORLD_SIZE;
     }
     else
     {
-        float stretch = (float)win_height / (float)win_width;
+        const float stretch = (float)win_height / (float)win_width;
         screen.w = WORLD_SIZE * 16.0f / 9.0f;
         screen.h = WORLD_SIZE * stretch * 16.0f / 9.0f;
     }
@@ -178,9 +279,9 @@ SDL_Rect get_screen_rect()
     return screen;
 }
 
-SDL_Rect get_world_rect()
+rect get_world_rect()
 {
-    SDL_Rect screen = {0,0,WORLD_SIZE * 16.0f / 9.0f,WORLD_SIZE};
+    rect screen = {0,0,WORLD_SIZE * 16.0f / 9.0f,WORLD_SIZE};
 
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
     {
@@ -196,63 +297,17 @@ SDL_Rect get_world_rect()
     return screen;
 }
 
-enum ui_align_type
+void draw_debug_boundaries()
 {
-    align_none, align_right, align_bottom, align_center, align_corner
-};
+    rect world = get_world_rect();
+    rect screen = get_screen_rect();
 
-void align_ui_rect(SDL_Rect* r,enum ui_align_type align)
-{
-    if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
-    {
-        float stretch = (float)win_width / (float)win_height;
+    change_draw_color(255,0,0,255);
+    render_rect(&screen,false,true,align_none);
 
-        switch(align)
-        {
-            case align_right:
-            r->x = WORLD_SIZE * stretch - r->x - r->w;
-            break;
-            case align_bottom:
-            r->y = WORLD_SIZE - r->y - r->h;
-            break;
-            case align_center:
-            r->x = WORLD_SIZE / 2 * stretch - r->x - r->w / 2;
-            r->y = WORLD_SIZE / 2 - r->y - r->h / 2;
-            break;
-            case align_corner:
-            r->x = WORLD_SIZE * stretch - r->x - r->w;
-            r->y = WORLD_SIZE - r->y - r->h;
-            break;
-            case align_none:
-            default:
-            break;
-        }
-    }
-    else
-    {
-        float stretch = (float)win_height / (float)win_width;
+    change_draw_color(0,255,0,255);
+    render_rect(&world,false,true,align_none);
 
-        switch(align)
-        {
-            case align_right:
-            r->x = WORLD_SIZE * 16.0f / 9.0f - r->x - r->w;
-            break;
-            case align_bottom:
-            r->y = WORLD_SIZE * stretch * 16.0f / 9.0f - r->y - r->h;
-            break;
-            case align_center:
-            r->x = WORLD_SIZE / 2 * 16.0f / 9.0f - r->x - r->w / 2;
-            r->y = WORLD_SIZE / 2 * stretch * 16.0f / 9.0f - r->y - r->h / 2;
-            break;
-            case align_corner:
-            r->x = WORLD_SIZE * 16.0f / 9.0f - r->x - r->w;
-            r->y = WORLD_SIZE * stretch * 16.0f / 9.0f - r->y - r->h;
-            break;
-            case align_none:
-            default:
-            break;
-        }
-    }
 }
 
 bool gameloop();
@@ -261,7 +316,7 @@ int dynamic_screen_resize(__attribute__((unused))void *userdata, SDL_Event * eve
 {
     if (event->type == SDL_WINDOWEVENT)
     {
-        if (event->window.event == SDL_WINDOWEVENT_RESIZED)
+        if (event->window.event == SDL_WINDOWEVENT_EXPOSED)
         {
             SDL_GetWindowSize(window,&win_width,&win_height);
             gameloop();
