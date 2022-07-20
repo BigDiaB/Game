@@ -1,15 +1,6 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-unsigned int pseudo_random_premutation(unsigned int x)
-{
-    const unsigned int prime = 4294967291;
-    if (x >= prime)
-        return x;
-    unsigned int residue = ((unsigned long long) x * x) % prime;
-    return (x <= prime / 2) ? residue : prime - residue;
-}
-
 SDL_Event event;
 const Uint8* current_keys;
 Uint8* last_keys = NULL;

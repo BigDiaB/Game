@@ -28,6 +28,7 @@ const double CAM_SPEED = 5.0f;
 const double MS_PER_GAMETICK = 10.0f;
 
 #include "util.h"
+#include "ECS.h"
 
 void render()
 {   
@@ -70,106 +71,43 @@ bool gameloop()
     return running;
 }
 
-bool has_component(unsigned int entity, buffer component, unsigned int* idx)
-{
-    unsigned int i, size = get_buffer_length(component);
+buffer tag_component;
+buffer rectangle_component;
+buffer drawable_component;
 
-    for (i = 0; i < size; i++)
-    {
-        if (get_buffer_fieldui(component,i,0) == entity)
-        {
-            if (idx != NULL)
-                *idx = i;
-            return true;
-        }
-    }
-    return false;
+void init_components()
+{
+    tag_component = init_bufferva(0,2,UINT,VOID);
+    rectangle_component = init_bufferva(0,5,UINT,FLOAT,FLOAT,UINT,UINT);
+    drawable_component = init_bufferva(0,5,UINT,UINT,UINT,UINT,UINT);
 }
 
-void add_component(unsigned int entity, buffer component)
+void deinit_components()
 {
-    if (has_component(entity,component,NULL))
-        return;
-    resize_buffer(component,get_buffer_length(component)+1);
-    set_buffer_fieldui(component,get_buffer_length(component)-1,0,entity);
-}
-
-void remove_component(unsigned int entity, buffer component)
-{
-    unsigned int index;
-    if (!has_component(entity,component,&index))
-        return;
-
-    remove_buffer_at(component,index);
-}
-
-unsigned int* entities = NULL;
-
-unsigned int create_entity()
-{
-    if (entities == NULL)
-    {
-        entities = malloc(sizeof(unsigned int));
-        entities[0] = 0;
-    }
-
-    entities[0]++;
-    if (entities[0] == 0)
-    {
-        puts("More than 2^32 entities! Internal buffer overflown!");
-        exit(EXIT_FAILURE);
-    }
-    entities = realloc(entities,entities[0]);
-
-    /* somehow get new id*/
-    return entities[entities[0]] = pseudo_random_premutation(entities[0]-1);
-}
-
-void destroy_entity(unsigned int entity)
-{
-    unsigned int i;
-    bool found = false;
-    for (i = 1; i < entities[0] +1; i++)
-    {
-        found = entities[i] == entity;
-        if (found)
-            break;
-    }
-
-    if (found)
-    {
-        if (--entities[0] == 0)
-        {
-            free(entities);
-            entities = NULL;
-            return;
-        }
-
-        for (; i < entities[0]; i++)
-        {
-            entities[i] = entities[i + 1];
-        }
-    }
+    deinit_buffer(tag_component);
+    deinit_buffer(rectangle_component);
+    deinit_buffer(drawable_component);
 }
 
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
-    buffer tag_component = init_bufferva(0,2,UINT,VOID);
-
+    init_components();
     unsigned int entity = create_entity();
     add_component(entity,tag_component);
 
-    if (has_component(entity,tag_component,NULL))
-        puts("Hello, World!");
+    unsigned int idx;
+    has_component(entity,tag_component,&idx);
+    const char* tag_data = "Test-Entity";
 
-    remove_component(entity,tag_component);
+    void** tag = get_buffer_pointerv(tag_component,idx,1);
+    *tag = malloc(strlen(tag_data) +1);
+    strcpy(*tag,tag_data);
+
+    puts(*tag);
+    
+    free(*tag);
     destroy_entity(entity);
-
-    deinit_buffer(tag_component);
-
-
-
-    exit(EXIT_SUCCESS);
+    deinit_components();
 
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Rect win_size;
