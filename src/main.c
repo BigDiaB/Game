@@ -30,17 +30,30 @@ const double MS_PER_GAMETICK = 10.0f;
 #include "util.h"
 #include "ECS.h"
 
+buffer rectangle_component;
+buffer drawable_component;
+unsigned int* entities = NULL;
+
+void drawable_system()
+{
+    unsigned int size = get_buffer_length(drawable_component),i;
+    change_draw_color(255,255,255,255);
+    for (i = 0; i < size; i++)
+    {
+        if (!has_component(get_buffer_fieldui(rectangle_component,i,0),rectangle_component,NULL))
+            continue;
+
+        if (get_buffer_fieldui(drawable_component,i,1))
+            render_rect(*(rect*)get_buffer_pointerf(rectangle_component,i,1),true,false,align_none);
+        if (get_buffer_fieldv(drawable_component,i,2) != NULL)
+            render_texture(*(rect*)get_buffer_pointerf(rectangle_component,i,1),false,align_none,get_buffer_fieldv(drawable_component,i,2));
+    }
+}
+
 void render()
 {   
-    rect ui_rect = {0,0,500,500};
-
-    rect obj_rect = {250,250,500,500};
-
-    change_draw_color(255,255,255,255);
-    render_rect(&ui_rect,true,true,align_corner);
-    render_rect(&obj_rect,true,false,align_none);
-
     draw_debug_boundaries();
+    drawable_system();
     SDL_SetRenderDrawColor(renderer,125,125,125,255);
     SDL_RenderPresent(renderer);
     SDL_RenderClear(renderer);
@@ -58,56 +71,8 @@ void update(double dt)
     }
 }
 
-bool gameloop()
-{
-    double dt = tick();
-    display_frame_time(dt);
-    update_SDL();
-
-    update(dt);
-
-    render();
-
-    return running;
-}
-
-buffer tag_component;
-buffer rectangle_component;
-buffer drawable_component;
-
-void init_components()
-{
-    tag_component = init_bufferva(0,2,UINT,VOID);
-    rectangle_component = init_bufferva(0,5,UINT,FLOAT,FLOAT,UINT,UINT);
-    drawable_component = init_bufferva(0,5,UINT,UINT,UINT,UINT,UINT);
-}
-
-void deinit_components()
-{
-    deinit_buffer(tag_component);
-    deinit_buffer(rectangle_component);
-    deinit_buffer(drawable_component);
-}
-
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
-    init_components();
-    unsigned int entity = create_entity();
-    add_component(entity,tag_component);
-
-    unsigned int idx;
-    has_component(entity,tag_component,&idx);
-    const char* tag_data = "Test-Entity";
-
-    void** tag = get_buffer_pointerv(tag_component,idx,1);
-    *tag = malloc(strlen(tag_data) +1);
-    strcpy(*tag,tag_data);
-
-    puts(*tag);
-    
-    free(*tag);
-    destroy_entity(entity);
-    deinit_components();
 
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Rect win_size;
@@ -126,12 +91,39 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_GetRendererOutputSize(renderer, &render_width, &render_height);
     if(render_width != win_width)
         SDL_RenderSetScale(renderer, (float)render_width / (float) win_width, (float)render_height / (float) win_height);
+
+    rectangle_component = init_bufferva(0,5,UINT,FLOAT,FLOAT,UINT,UINT);
+    drawable_component = init_bufferva(0,3,UINT,UINT,VOID);
+
+    unsigned int entity = create_entity(&entities),idx;
+    add_component(entity,rectangle_component);
+    has_component(entity,rectangle_component,&idx);
+
+    set_buffer_fieldf(rectangle_component,idx,1,250);
+    set_buffer_fieldf(rectangle_component,idx,2,250);
+    set_buffer_fieldui(rectangle_component,idx,3,500);
+    set_buffer_fieldui(rectangle_component,idx,4,500);
+
+    add_component(entity,drawable_component);
+    has_component(entity,drawable_component,&idx);
+
+    set_buffer_fieldui(drawable_component,idx,1,true);
+    set_buffer_fieldv(drawable_component,idx,2,SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp")));
+
+
     tick();
     while(gameloop());
     free(last_keys);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    remove_component(entity,rectangle_component);
+    remove_component(entity,drawable_component);
+    destroy_entity(entity,&entities);
+    
+    deinit_buffer(rectangle_component);
+    deinit_buffer(drawable_component);
     
     exit(EXIT_SUCCESS);
 }

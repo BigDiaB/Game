@@ -60,6 +60,8 @@ struct rect
 
 typedef struct rect rect;
 
+typedef SDL_Texture* texture;
+
 void change_draw_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
     SDL_SetRenderDrawColor(renderer,r,g,b,a);
@@ -174,24 +176,41 @@ rect* translate_rect_ui(rect* r)
     return r;
 }
 
-void render_rect(rect* r, bool fill, bool ui, enum align_type align)
+void render_rect(rect r, bool fill, bool ui, enum align_type align)
 {
     if (ui)
     {
-        align_ui_rect(r,align);
-        translate_rect_ui(r);
+        align_ui_rect(&r,align);
+        translate_rect_ui(&r);
     }
     else
     {
-        translate_rect(r);
+        translate_rect(&r);
     }
 
-    SDL_FRect rr = {r->x,r->y,r->w,r->h};
+    SDL_FRect rr = {r.x,r.y,r.w,r.h};
 
     if (fill)
         SDL_RenderFillRectF(renderer,&rr);
     else
         SDL_RenderDrawRectF(renderer,&rr);
+}
+
+void render_texture(rect r, bool ui, enum align_type align, texture tex)
+{
+    if (ui)
+    {
+        align_ui_rect(&r,align);
+        translate_rect_ui(&r);
+    }
+    else
+    {
+        translate_rect(&r);
+    }
+
+    SDL_FRect rr = {r.x,r.y,r.w,r.h};
+
+    SDL_RenderCopyF(renderer,tex,NULL,&rr);
 }
 
 void display_frame_time(double tick_time)
@@ -294,14 +313,16 @@ void draw_debug_boundaries()
     rect screen = get_screen_rect();
 
     change_draw_color(255,0,0,255);
-    render_rect(&screen,false,true,align_none);
+    render_rect(screen,false,true,align_none);
 
     change_draw_color(0,255,0,255);
-    render_rect(&world,false,true,align_none);
+    render_rect(world,false,true,align_none);
 
 }
 
 bool gameloop();
+void update(double dt);
+void render();
 
 int dynamic_screen_resize(__attribute__((unused))void *userdata, SDL_Event * event)
 {
@@ -315,6 +336,18 @@ int dynamic_screen_resize(__attribute__((unused))void *userdata, SDL_Event * eve
         }
     }
     return 1;
+}
+
+bool gameloop()
+{
+    double dt = tick();
+    display_frame_time(dt);
+    update_SDL();
+
+    update(dt);
+    render();
+
+    return running;
 }
 
 

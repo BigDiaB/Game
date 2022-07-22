@@ -16,8 +16,6 @@ destroy_entity(entity);
 deinit_buffer(tag_component);
 */
 
-unsigned int* entities = NULL;
-
 unsigned int pseudo_random_premutation(unsigned int x)
 {
     const unsigned int prime = 4294967291;
@@ -60,48 +58,48 @@ void remove_component(unsigned int entity, buffer component)
     remove_buffer_at(component,index);
 }
 
-unsigned int create_entity()
+unsigned int create_entity(unsigned int** entities)
 {
-    if (entities == NULL)
+    if ((*entities) == NULL)
     {
-        entities = malloc(sizeof(unsigned int));
-        entities[0] = 0;
+        (*entities) = malloc(sizeof(unsigned int));
+        (*entities)[0] = 0;
     }
 
-    entities[0]++;
-    if (entities[0] == 0)
+    (*entities)[0]++;
+    if ((*entities)[0] == 0)
     {
         puts("More than 2^32 entities! Internal buffer overflown!");
         exit(EXIT_FAILURE);
     }
-    entities = realloc(entities,entities[0]);
+    (*entities) = realloc((*entities),(*entities)[0]);
 
-    return entities[entities[0]] = pseudo_random_premutation(entities[0]-1);
+    return (*entities)[(*entities)[0]] = pseudo_random_premutation((*entities)[0]-1);
 }
 
-void destroy_entity(unsigned int entity)
+void destroy_entity(unsigned int entity, unsigned int** entities)
 {
     unsigned int i;
     bool found = false;
-    for (i = 1; i < entities[0] +1; i++)
+    for (i = 1; i < (*entities)[0] +1; i++)
     {
-        found = entities[i] == entity;
+        found = (*entities)[i] == entity;
         if (found)
             break;
     }
 
     if (found)
     {
-        if (--entities[0] == 0)
+        if (--(*entities)[0] == 0)
         {
-            free(entities);
-            entities = NULL;
+            free((*entities));
+            (*entities) = NULL;
             return;
         }
 
-        for (; i < entities[0]; i++)
+        for (; i < (*entities)[0]; i++)
         {
-            entities[i] = entities[i + 1];
+            (*entities)[i] = (*entities)[i + 1];
         }
     }
 }
