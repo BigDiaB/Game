@@ -176,8 +176,9 @@ rect* translate_rect_ui(rect* r)
     return r;
 }
 
-void render_rect(rect r, bool fill, bool ui, enum align_type align)
+void render_rect(rect* src, bool fill, bool ui, enum align_type align)
 {
+    rect r = *src;
     if (ui)
     {
         align_ui_rect(&r,align);
@@ -196,8 +197,9 @@ void render_rect(rect r, bool fill, bool ui, enum align_type align)
         SDL_RenderDrawRectF(renderer,&rr);
 }
 
-void render_texture(rect r, bool ui, enum align_type align, texture tex)
+void render_texture(rect* src, bool ui, enum align_type align, texture tex)
 {
+    rect r = *src;
     if (ui)
     {
         align_ui_rect(&r,align);
@@ -313,10 +315,10 @@ void draw_debug_boundaries()
     rect screen = get_screen_rect();
 
     change_draw_color(255,0,0,255);
-    render_rect(screen,false,true,align_none);
+    render_rect(&screen,false,true,align_none);
 
     change_draw_color(0,255,0,255);
-    render_rect(world,false,true,align_none);
+    render_rect(&world,false,true,align_none);
 
 }
 

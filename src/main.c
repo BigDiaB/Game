@@ -2,12 +2,13 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <string.h>
 #include <sys/time.h>
 
-#include <SDL2/SDL.h>
 #include <DBG/debug.h>
 #include <construct/construct.h>
+#include <destruct/destruct.h>
+
+#include <SDL2/SDL.h>
 
 const bool ENABLE_VSYNC = true;
 const bool ENABLE_SCREEN_RESIZE = true;
@@ -19,7 +20,7 @@ const float WINDOW_SCALE = 0.8f;
 const unsigned int WINDOW_FLAGS = SDL_WINDOW_METAL | (ENABLE_SCREEN_RESIZE ? SDL_WINDOW_RESIZABLE : 0) | SDL_WINDOW_ALLOW_HIGHDPI;
 const unsigned int RENDERER_FLAGS = SDL_RENDERER_ACCELERATED | (ENABLE_VSYNC ? SDL_RENDERER_PRESENTVSYNC : 0) | SDL_RENDERER_TARGETTEXTURE;
 
-const double WORLD_ZOOM = 0.5f;
+const double WORLD_ZOOM = 1.0f;
 const double WORLD_SIZE = 1000.0f / WORLD_ZOOM;
 
 const double CAM_SMOOTH = 0.008f * 1000 / WORLD_SIZE;
@@ -28,7 +29,6 @@ const double CAM_SPEED = 5.0f;
 const double MS_PER_GAMETICK = 10.0f;
 
 #include "util.h"
-#include "ECS.h"
 
 buffer rectangle_component;
 buffer drawable_component;
@@ -44,9 +44,9 @@ void drawable_system()
             continue;
 
         if (get_buffer_fieldui(drawable_component,i,1))
-            render_rect(*(rect*)get_buffer_pointerf(rectangle_component,i,1),true,false,align_none);
+            render_rect(get_buffer_pointer(rectangle_component,i,1),true,false,align_none);
         if (get_buffer_fieldv(drawable_component,i,2) != NULL)
-            render_texture(*(rect*)get_buffer_pointerf(rectangle_component,i,1),false,align_none,get_buffer_fieldv(drawable_component,i,2));
+            render_texture(get_buffer_pointer(rectangle_component,i,1),false,align_none,get_buffer_fieldv(drawable_component,i,2));
     }
 }
 
@@ -62,12 +62,12 @@ void render()
 void update(double dt)
 {
     accumulator += dt;
-    /* Handle input-logic here (every frame) */
+    /* Handle input logic here (every frame) */
 
     while(accumulator >= MS_PER_GAMETICK)
     {
         accumulator -= MS_PER_GAMETICK;
-        /* Handle game-logic here (every tick, aka 10ms) */
+        /* Handle game logic here (every game tick) */
     }
 }
 
@@ -80,6 +80,7 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_GetDisplayBounds(0,&win_size);
     win_width = win_size.w * WINDOW_SCALE;
     win_height = win_size.h * WINDOW_SCALE;
+    SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
     window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, WINDOW_FLAGS);
     renderer = SDL_CreateRenderer(window, 1, RENDERER_FLAGS);
     SDL_RenderClear(renderer);
@@ -110,9 +111,10 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     set_buffer_fieldui(drawable_component,idx,1,true);
     set_buffer_fieldv(drawable_component,idx,2,SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp")));
 
-
     tick();
-    while(gameloop());
+
+    gameloop: if (gameloop()) goto gameloop;
+
     free(last_keys);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
