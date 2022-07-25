@@ -1,39 +1,33 @@
 #ifndef DESTRUCT_H
 #define DESTRUCT_H
 
-/* Destruct
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+/* Destruct
 Destruct is a small ECS "addon" for the construct library!
-Usage example:
 */
 
 #include <construct/construct.h>
 
-#ifndef DESTRUCT_H	
-	/* Create a "world", where all of your entities will live in (There can only be 2^32-1 entities maximum! There is an error message though) */
-	unsigned int* entities = NULL;
+typedef unsigned int entity;
 
-	/* Initialise a component buffer (The first element needs to be an unsigned integer to hold the entity id! The rest are the actual types) */
-	buffer tag_component = init_bufferva(0,2,UINT,VOID);
+/* Returns the number of entities in the given entity buffer*/
+unsigned int get_num_entities(entity** entities);
+/* Returns a boolean value corresponding to the given entity having the specified component (Populates idx with the index of the corresponding element in specified buffer if idx is not NULL)*/
+int has_component(entity ent, buffer component, unsigned int* idx);
+/* Adds the specified component to the given entity */
+void add_component(entity ent, buffer component);
+/* Removes the specified component from a given entity (Gets ignored if entity doesn't have the specified component) */
+void remove_component(entity ent, buffer component);
+/* Returns a unique entity (Unique to the specified entity buffer) */
+entity create_entity(entity** entities);
+/* Removes the given entity from the specified entity buffer */
+void destroy_entity(entity ent, entity** entities);
 
-	unsigned int entity = create_entity(&entities);
-	add_component(entity,tag_component);
-
-	/* If you supply has_component() with an unsigned integer pointer instead of NULL it will fill in the index of the corresponding element from the buffer */
-	if (has_component(entity,tag_component,NULL))
-	    puts("Hello, World!");
-
-	/* Clean up the entities and components */
-	remove_component(entity,tag_component);
-	destroy_entity(entity,&entities);
-
-	deinit_buffer(tag_component);
+#ifdef __cplusplus
+}
 #endif
-
-int has_component(unsigned int entity, buffer component, unsigned int* idx);
-void add_component(unsigned int entity, buffer component);
-void remove_component(unsigned int entity, buffer component);
-unsigned int create_entity(unsigned int** entities);
-void destroy_entity(unsigned int entity, unsigned int** entities);
 
 #endif /* DESTRUCT_H */

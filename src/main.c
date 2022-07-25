@@ -13,26 +13,21 @@
 const bool ENABLE_VSYNC = true;
 const bool ENABLE_SCREEN_RESIZE = true;
 const bool ENABLE_SCREEN_REFRESH_DURING_RESIZE = true;
-const bool ENABLE_SMOOTH_CAM = true;
-
 const float WINDOW_SCALE = 0.8f;
-
 const unsigned int WINDOW_FLAGS = SDL_WINDOW_METAL | (ENABLE_SCREEN_RESIZE ? SDL_WINDOW_RESIZABLE : 0) | SDL_WINDOW_ALLOW_HIGHDPI;
 const unsigned int RENDERER_FLAGS = SDL_RENDERER_ACCELERATED | (ENABLE_VSYNC ? SDL_RENDERER_PRESENTVSYNC : 0) | SDL_RENDERER_TARGETTEXTURE;
 
+const bool ENABLE_SMOOTH_CAM = true;
 const double WORLD_ZOOM = 1.0f;
 const double WORLD_SIZE = 1000.0f / WORLD_ZOOM;
-
 const double CAM_SMOOTH = 0.008f * 1000 / WORLD_SIZE;
 const double CAM_SPEED = 5.0f;
-
 const double MS_PER_GAMETICK = 10.0f;
 
 #include "util.h"
 
-buffer rectangle_component;
-buffer drawable_component;
-unsigned int* entities = NULL;
+buffer rectangle_component, drawable_component;
+entity* entities = NULL;
 
 void drawable_system()
 {
@@ -73,7 +68,6 @@ void update(double dt)
 
 int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 {   
-
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Rect win_size;
     int render_width = 0, render_height = 0;
@@ -81,12 +75,12 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     win_width = win_size.w * WINDOW_SCALE;
     win_height = win_size.h * WINDOW_SCALE;
     SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     window = SDL_CreateWindow("I am a v_window, so what?!", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_width, win_height, WINDOW_FLAGS);
     renderer = SDL_CreateRenderer(window, 1, RENDERER_FLAGS);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_GetWindowSize(window,&win_width,&win_height);
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     if (ENABLE_SCREEN_RESIZE && ENABLE_SCREEN_REFRESH_DURING_RESIZE)
         SDL_SetEventFilter(dynamic_screen_resize, NULL);
     SDL_GetRendererOutputSize(renderer, &render_width, &render_height);
@@ -95,21 +89,20 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
 
     rectangle_component = init_bufferva(0,5,UINT,FLOAT,FLOAT,UINT,UINT);
     drawable_component = init_bufferva(0,3,UINT,UINT,VOID);
-
-    unsigned int entity = create_entity(&entities),idx;
-    add_component(entity,rectangle_component);
-    has_component(entity,rectangle_component,&idx);
+    entity ent = create_entity(&entities),idx;
+    add_component(ent,rectangle_component);
+    has_component(ent,rectangle_component,&idx);
 
     set_buffer_fieldf(rectangle_component,idx,1,250);
     set_buffer_fieldf(rectangle_component,idx,2,250);
     set_buffer_fieldui(rectangle_component,idx,3,500);
     set_buffer_fieldui(rectangle_component,idx,4,500);
 
-    add_component(entity,drawable_component);
-    has_component(entity,drawable_component,&idx);
+    add_component(ent,drawable_component);
+    has_component(ent,drawable_component,&idx);
 
     set_buffer_fieldui(drawable_component,idx,1,true);
-    set_buffer_fieldv(drawable_component,idx,2,SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP("../assets/iso_cube.bmp")));
+    set_buffer_fieldv(drawable_component,idx,2,load_BMP_to_texture("../assets/iso_cube.bmp"));
 
     tick();
 
@@ -120,9 +113,9 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char* argv[])
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    remove_component(entity,rectangle_component);
-    remove_component(entity,drawable_component);
-    destroy_entity(entity,&entities);
+    remove_component(ent,rectangle_component);
+    remove_component(ent,drawable_component);
+    destroy_entity(ent,&entities);
     
     deinit_buffer(rectangle_component);
     deinit_buffer(drawable_component);

@@ -62,6 +62,11 @@ typedef struct rect rect;
 
 typedef SDL_Texture* texture;
 
+texture load_BMP_to_texture(char* filename)
+{
+    return SDL_CreateTextureFromSurface(renderer,SDL_LoadBMP(filename));
+}
+
 void change_draw_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
     SDL_SetRenderDrawColor(renderer,r,g,b,a);
@@ -153,8 +158,10 @@ rect* translate_rect(rect* r)
     return r;
 }
 
-rect* translate_rect_ui(rect* r)
+rect* translate_rect_ui(rect* r, enum align_type align)
 {
+
+    align_ui_rect(r,align);
 
     if ((float)win_width / (float)win_height >= 16.0f / 9.0f)
     {
@@ -181,8 +188,7 @@ void render_rect(rect* src, bool fill, bool ui, enum align_type align)
     rect r = *src;
     if (ui)
     {
-        align_ui_rect(&r,align);
-        translate_rect_ui(&r);
+        translate_rect_ui(&r,align);
     }
     else
     {
@@ -202,8 +208,7 @@ void render_texture(rect* src, bool ui, enum align_type align, texture tex)
     rect r = *src;
     if (ui)
     {
-        align_ui_rect(&r,align);
-        translate_rect_ui(&r);
+        translate_rect_ui(&r,align );
     }
     else
     {
